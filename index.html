@@ -216,7 +216,7 @@ header h1{font-size:18px;flex:1;white-space:nowrap}
 <div id="mainView">
   <header>
     <div class="headerRow">
-      <h1>📚 提示词图库 <span id="verTag" style="font-size:11px;color:var(--sub);font-weight:normal;margin-left:6px">v20</span></h1>
+      <h1>📚 提示词图库 <span id="verTag" style="font-size:11px;color:var(--sub);font-weight:normal;margin-left:6px">v21</span></h1>
       <button class="miniBtn" onclick="toggleBatch()">批量</button>
       <button class="miniBtn" onclick="openRandom()">🎲 随机</button>
       <button class="miniBtn" onclick="openStats()">📊 统计</button>
@@ -320,7 +320,7 @@ header h1{font-size:18px;flex:1;white-space:nowrap}
 <!-- 编辑/新增弹窗 -->
 <div id="editMask">
   <div class="editBox">
-    <h2 id="editTitle">新增记录</h2>
+    <h2 id="editTitle" style="display:flex;justify-content:space-between;align-items:center">新增记录 <button type="button" id="editFavBtn" class="miniBtn" onclick="toggleFav()" style="display:none">☆ 收藏</button></h2>
     <div class="editField">
       <label>图片</label>
       <div class="editImgs" id="editImgs"></div>
@@ -343,6 +343,10 @@ header h1{font-size:18px;flex:1;white-space:nowrap}
     <div class="editActions">
       <button class="saveBtn" id="saveBtn" onclick="saveRecord()">保 存</button>
       <button class="cancelBtn" onclick="tryCloseEdit()">取 消</button>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:10px" id="editSubActions">
+      <button type="button" class="miniBtn" onclick="copyDetail()" style="flex:1">📋 复制全套</button>
+      <button type="button" class="miniBtn danger" onclick="askDelete()" style="flex:1">🗑 删除</button>
     </div>
   </div>
 </div>
@@ -649,7 +653,7 @@ function render(){
     var cardClick = batchMode ? 'togglePick(\'' + r.id + '\')' : (first ? 'zoomList(' + idx + ')' : 'quickUpload(' + idx + ',event)');
     var actsRow = batchMode ? '' :
       '<div class="cardActs">' +
-      '<button class="actBtn" onclick="event.stopPropagation();openDetail(' + idx + ')">✏️ 修改</button>' +
+      '<button class="actBtn" onclick="event.stopPropagation();editByIdx(' + idx + ')">✏️ 修改</button>' +
       '<button class="actBtn" onclick="event.stopPropagation();copyTextByIdx(' + idx + ')">📋 复制提示词</button></div>';
     var inner = '';
     if(batchMode){
@@ -845,15 +849,25 @@ function uuid(){
 
 function openNew(){
   editingDirty = false;
+  detail = null;
   editing = { id:null, keepImages:[], removedImages:[], newFiles:[] };
   document.getElementById('editTitle').textContent = '新增记录';
   document.getElementById('editPrompt').value = '';
   document.getElementById('editVariants').value = '';
   document.getElementById('editTags').value = '';
   document.getElementById('saveBtn').textContent = '保 存';
+  var ef = document.getElementById('editFavBtn'); if(ef) ef.style.display = 'none';
+  var es = document.getElementById('editSubActions'); if(es) es.style.display = 'none';
   renderEditImgs();
   document.getElementById('editMask').classList.add('open');
   document.body.style.overflow='hidden';
+}
+
+function editByIdx(idx){
+  var rec = filteredCache[idx];
+  if(!rec) return;
+  detail = rec;
+  openEdit();
 }
 
 function openEdit(){
@@ -871,6 +885,9 @@ function openEdit(){
   document.getElementById('editVariants').value = vars.join('\n');
   document.getElementById('editTags').value = realTags(detail).join(', ');
   document.getElementById('saveBtn').textContent = '保 存';
+  var ef = document.getElementById('editFavBtn');
+  if(ef){ ef.style.display = ''; ef.textContent = hasFav(detail) ? '★ 已收藏' : '☆ 收藏'; }
+  var es = document.getElementById('editSubActions'); if(es) es.style.display = 'flex';
   renderEditImgs();
   document.getElementById('editMask').classList.add('open');
   document.body.style.overflow='hidden';
@@ -1047,7 +1064,8 @@ function toggleFav(){
   }).then(function(r){
     if(r && !r.ok) throw new Error('操作失败');
     rec.tags = tags;
-    document.getElementById('favBtn').textContent = on ? '★ 已收藏' : '☆ 收藏';
+    var fb = document.getElementById('favBtn'); if(fb) fb.textContent = on ? '★ 已收藏' : '☆ 收藏';
+    var ef = document.getElementById('editFavBtn'); if(ef) ef.textContent = on ? '★ 已收藏' : '☆ 收藏';
     render();
     toast(on ? '已收藏' : '已取消收藏');
   })['catch'](function(e){ toast('失败：' + (e&&e.message?e.message:e)); });
@@ -1067,7 +1085,7 @@ function doDelete(){
     method: 'PATCH', token: getToken(), body: { tags: tags }, raw: true
   }).then(function(r){
     if(r && !r.ok) throw new Error('删除失败');
-    closeDetail();
+    closeEdit();
     toast('已移入回收站');
     loadAll();
   })['catch'](function(e){ toast('删除失败：' + (e&&e.message?e.message:e)); });
