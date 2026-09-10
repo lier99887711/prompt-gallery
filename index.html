@@ -954,18 +954,14 @@ function saveRecord(){
     }
   }).then(function(res){
     btn.textContent = '保 存'; btn.disabled = false;
-    if(res.new){
-      closeEdit();
-      toast('已新增');
-      loadAll();
-    }else{
-      toast('已保存');
-      editing.keepImages = savedImages;
-      editing.removedImages = [];
-      editing.newFiles = [];
-      renderEditImgs();
-      loadAll();
-    }
+    editingDirty = false;
+    toast('已保存');
+    if(res.new && res.id){ editing.id = res.id; }
+    editing.keepImages = savedImages;
+    editing.removedImages = [];
+    editing.newFiles = [];
+    renderEditImgs();
+    loadAll();
   })['catch'](function(e){
     btn.textContent = '保 存'; btn.disabled = false;
     toast('保存失败：' + (e && e.message ? e.message : e));
