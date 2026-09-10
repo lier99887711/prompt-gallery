@@ -216,7 +216,7 @@ header h1{font-size:18px;flex:1;white-space:nowrap}
 <div id="mainView">
   <header>
     <div class="headerRow">
-      <h1>📚 提示词图库 <span id="verTag" style="font-size:11px;color:var(--sub);font-weight:normal;margin-left:6px">v19</span></h1>
+      <h1>📚 提示词图库 <span id="verTag" style="font-size:11px;color:var(--sub);font-weight:normal;margin-left:6px">v20</span></h1>
       <button class="miniBtn" onclick="toggleBatch()">批量</button>
       <button class="miniBtn" onclick="openRandom()">🎲 随机</button>
       <button class="miniBtn" onclick="openStats()">📊 统计</button>
@@ -241,6 +241,7 @@ header h1{font-size:18px;flex:1;white-space:nowrap}
       <button class="tagChip" onclick="exportTxt()">导出TXT</button>
       <button class="tagChip" onclick="exportJson()">备份</button>
       <button class="tagChip" onclick="document.getElementById('importFile').click()">导入</button>
+      <button class="tagChip" onclick="cleanNegativePrompts()" style="border-color:#c0392b;color:#c0392b">🧹 清理负面词</button>
       <input type="file" id="importFile" accept=".json" style="display:none" onchange="importJson(this)">
       <input type="file" id="quickFileInput" accept="image/*" multiple style="display:none" onchange="quickFileChange(this)">
       <input type="file" id="quickCameraInput" accept="image/*" capture="environment" style="display:none" onchange="quickCameraChange(this)">
@@ -1215,6 +1216,50 @@ function closeStats(){ document.getElementById('statsMask').classList.remove('op
 document.getElementById('statsMask').addEventListener('click', function(e){ if(e.target.id === 'statsMask') closeStats(); });
 
 /* ========== 导出 TXT ========== */
+/* ========== 一键清理重复负面词（方案A：保留精简负面） ========== */
+function cleanPrompt(t){
+  var s = String(t || '');
+  // 1) 删除内嵌的「不夸张、不假体感」（含前导「，/、/但」）
+  s = s.replace(/[，,、]?\s*(?:但|却)?\s*不夸张\s*[、,，]\s*不假体感/g, '');
+  // 2) 删除变体「不夸张」/「不假体感」独立残留（在负面语境中成对出现才删，这里处理常见变体）
+  s = s.replace(/[，,、]?\s*但?\s*不假体感/g, '');
+  s = s.replace(/[，,、]?\s*但?\s*不夸张(?=[，,、;\n]|$)/g, '');
+  // 3) 超长负面段 → 精简负面
+  s = s.replace(/(?:负面|Negative prompt|negative)[:：][^\n]*/gi, '负面：换脸、塑料感、AI假人感、畸形手');
+  // 4) 清理残留标点
+  s = s.replace(/[，,]\s*[；;]/g, '；').replace(/[，,]{2,}/g, '，').replace(/[，,]\s*$/g, '').replace(/\s{2,}/g, ' ');
+  return s;
+}
+function cleanNegativePrompts(){
+  var list = records.filter(function(r){ return !(r.images||[]).length; });
+  if(!list.length){ toast('当前没有无图记录'); return; }
+  askConfirm('将清理 ' + list.length + ' 条无图记录的重复负面词（保留精简负面：换脸、塑料感、AI假人感、畸形手）\n\n是否继续？', function(){
+    var tasks = [];
+    var changed = 0;
+    list.forEach(function(r){
+      var t = r.prompt_text || '';
+      var nt = cleanPrompt(t);
+      if(nt === t) return;
+      changed++;
+      tasks.push(apiFetch('/rest/v1/prompts?id=eq.' + encodeURIComponent(r.id), {
+        method: 'PATCH', token: getToken(), body: { prompt_text: nt }, raw: true
+      }).then(function(res){
+        if(!res.ok){ return res.json().then(function(d){ throw new Error(d.message||'保存失败'); }); }
+      }));
+    });
+    if(!tasks.length){ toast('无图记录已无重复负面词，无需修改'); return; }
+    showLoading('正在清理 ' + changed + ' 条负面词…');
+    Promise.all(tasks).then(function(){
+      hideLoading();
+      toast('已清理 ' + changed + ' 条记录');
+      loadAll();
+    })['catch'](function(e){
+      hideLoading();
+      toast('清理中断：' + (e&&e.message?e.message:e));
+    });
+  }, '开始清理');
+}
+
 function exportTxt(){
   var list = filtered();
   if(!list.length){ toast('当前没有可导出的记录'); return; }
