@@ -866,12 +866,15 @@ function removeNewFile(i){
 document.getElementById('editFileInput').addEventListener('change', function(){
   var files = this.files;
   if(!files || !files.length || !editing) return;
+  var added = 0;
   for(var i=0; i<files.length; i++){
     var f = files[i];
-    if(!f.type || f.type.indexOf('image/') !== 0) continue;
+    if(f.type && f.type.indexOf('image/') !== 0) continue;
     editing.newFiles.push({ file: f, path: '', preview: URL.createObjectURL(f) });
+    added++;
   }
   this.value = '';
+  if(added === 0){ toast('未识别图片格式，请换一张试试'); return; }
   renderEditImgs();
 });
 
@@ -1368,13 +1371,13 @@ document.getElementById('quickFileInput').addEventListener('change', function(){
   var tasks = [];
   for(var i=0; i<files.length; i++){
     var f = files[i];
-    if(!f.type || f.type.indexOf('image/') !== 0) continue;
+    if(f.type && f.type.indexOf('image/') !== 0) continue;
     var ext = (f.name.split('.').pop() || 'png').toLowerCase();
     if(ext.length > 5) ext = 'png';
     var path = 'record-' + rid + '/' + Date.now() + '_' + i + '.' + ext;
     (function(p, ff){ tasks.push(uploadToStorage(p, ff).then(function(){ return p; })); })(path, f);
   }
-  if(!tasks.length){ return; }
+  if(!tasks.length){ toast('未识别图片格式，请换一张试试'); return; }
   toast('上传中…');
   Promise.all(tasks).then(function(paths){
     var imgs = (rec.images||[]).concat(paths);
