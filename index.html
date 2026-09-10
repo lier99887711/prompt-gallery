@@ -346,6 +346,7 @@ async function sha256Hex(str){
   return toHexBytes(new Uint8Array(buf));
 }
 async function hmacBytes(keyBytes, data){
+  if(typeof keyBytes === 'string'){ keyBytes = new TextEncoder().encode(keyBytes); }
   var k = await crypto.subtle.importKey('raw', keyBytes, {name:'HMAC', hash:'SHA-256'}, false, ['sign']);
   return new Uint8Array(await crypto.subtle.sign('HMAC', k, new TextEncoder().encode(data)));
 }
