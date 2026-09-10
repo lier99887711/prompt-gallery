@@ -216,7 +216,7 @@ header h1{font-size:18px;flex:1;white-space:nowrap}
 <div id="mainView">
   <header>
     <div class="headerRow">
-      <h1>📚 提示词图库 <span id="verTag" style="font-size:11px;color:var(--sub);font-weight:normal;margin-left:6px">v18</span></h1>
+      <h1>📚 提示词图库 <span id="verTag" style="font-size:11px;color:var(--sub);font-weight:normal;margin-left:6px">v19</span></h1>
       <button class="miniBtn" onclick="toggleBatch()">批量</button>
       <button class="miniBtn" onclick="openRandom()">🎲 随机</button>
       <button class="miniBtn" onclick="openStats()">📊 统计</button>
@@ -1455,9 +1455,8 @@ function processQuickFiles(files, forcedRec){
       toast('上传成功，已切回「全部」');
     }
     rec.images = imgs;
-    detail = rec;
     loadAll();
-    openEdit();
+    closeEdit();
   })['catch'](function(e){
     hideLoading();
     askConfirm('上传失败：' + (e && e.message ? e.message : e) + '\n\n请检查网络后重试，或改用「修改 → 添加图片」方式上传', null, '知道了');
