@@ -604,7 +604,7 @@ function render(){
     var pick = batchMode
       ? '<span class="pickBox' + (batchSet[r.id] ? ' on' : '') + '" onclick="event.stopPropagation();togglePick(\'' + r.id + '\')">' + (batchSet[r.id] ? '✓' : '') + '</span>'
       : '';
-    var noImgHtml = '<div class="noimg"' + (batchMode ? '' : ' onclick="quickUpload(' + idx + ',event)"') + '>' + (batchMode ? '暂无图片' : '暂无图片 · 点此上传') + '</div>';
+    var noImgHtml = '<label class="noimg"' + (batchMode ? '' : ' onclick="quickUpload(' + idx + ',event)"') + ' for="quickFileInput">' + (batchMode ? '暂无图片' : '暂无图片 · 点此上传') + '</label>';
     var cardClick = batchMode ? 'togglePick(\'' + r.id + '\')' : (first ? 'zoomList(' + idx + ')' : 'quickUpload(' + idx + ',event)');
     var actsRow = batchMode ? '' :
       '<div class="cardActs">' +
@@ -910,6 +910,7 @@ function saveRecord(){
   btn.disabled = true;
 
   var rid = editing.id || uuid();
+  var savedImages = [];
   var uploadTotal = editing.newFiles.length;
   var uploadDone = 0;
   var uploadTasks = editing.newFiles.map(function(f, i){
@@ -930,6 +931,7 @@ function saveRecord(){
   .then(function(){ return Promise.all(uploadTasks); })
   .then(function(newPaths){
     var images = editing.keepImages.concat(newPaths);
+    savedImages = images;
     var payload = {
       user_id: 'cb23b6c5-667a-4426-94f9-5a6c25505619',
       prompt_text: promptText,
@@ -952,9 +954,18 @@ function saveRecord(){
     }
   }).then(function(res){
     btn.textContent = '保 存'; btn.disabled = false;
-    closeEdit();
-    toast(res.new ? '已新增' : '已保存');
-    loadAll();
+    if(res.new){
+      closeEdit();
+      toast('已新增');
+      loadAll();
+    }else{
+      toast('已保存');
+      editing.keepImages = savedImages;
+      editing.removedImages = [];
+      editing.newFiles = [];
+      renderEditImgs();
+      loadAll();
+    }
   })['catch'](function(e){
     btn.textContent = '保 存'; btn.disabled = false;
     toast('保存失败：' + (e && e.message ? e.message : e));
@@ -1346,6 +1357,7 @@ function quickUpload(idx, ev){
   var rec = filteredCache[idx];
   if(!rec){ return; }
   quickTarget = rec;
+  if(ev && ev.target && ev.target.tagName === 'LABEL') return;
   document.getElementById('quickFileInput').click();
 }
 document.getElementById('quickFileInput').addEventListener('change', function(){
@@ -1380,7 +1392,10 @@ document.getElementById('quickFileInput').addEventListener('change', function(){
       document.getElementById('fAll').classList.add('on');
       toast('上传成功，已切回「全部」');
     }
+    rec.images = imgs;
+    detail = rec;
     loadAll();
+    openEdit();
   })['catch'](function(e){
     toast('上传失败：' + (e&&e.message?e.message:e));
   });
