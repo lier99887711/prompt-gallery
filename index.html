@@ -49,14 +49,10 @@ header h1{font-size:18px;flex:1;white-space:nowrap}
 @media(min-width:640px){#list{grid-template-columns:repeat(3,1fr);gap:12px;padding:0 14px 100px}}
 @media(min-width:1024px){#list{grid-template-columns:repeat(4,1fr);gap:14px}}
 @media(max-width:639px){.cardBody{display:none}.card,.cardImgWrap{border-radius:10px}.cardImgWrap .imgCount{right:4px;top:4px;padding:2px 5px;font-size:9px}}
-.cardActions{position:absolute;left:0;right:0;bottom:0;padding:6px 8px;background:linear-gradient(transparent,rgba(0,0,0,.75));display:flex}
-.cardActions .actBtn{flex:1;background:rgba(255,255,255,.24);color:#fff;border:none;border-radius:7px;padding:6px 0;font-size:12px}
-.cardActions .actBtn:active{background:var(--accent)}
-.noimgCard{background:var(--card2)}
-.noimgPrompt{font-size:12px;color:var(--text);line-height:1.45;padding:8px 10px 4px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;white-space:pre-line}
-.noimgActs{display:flex;gap:8px;padding:6px 10px 10px}
-.noimgActs .actBtn{flex:1;background:var(--card);border:1px solid var(--line);color:var(--sub);border-radius:8px;padding:7px 0;font-size:12px}
-.noimgActs .actBtn:active{background:var(--accent);color:#fff}
+.cardActs{display:flex;gap:8px;padding:8px}
+.cardActs .actBtn{flex:1;background:var(--card2);border:1px solid var(--line);color:var(--sub);border-radius:8px;padding:8px 0;font-size:12px}
+.cardActs .actBtn:active{background:var(--accent);color:#fff}
+.noimgPrompt{font-size:12px;color:var(--text);line-height:1.45;padding:8px 10px 0;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;white-space:pre-line}
 .card{background:var(--card);border:1px solid var(--line);border-radius:16px;overflow:hidden;box-shadow:var(--shadow)}
 .cardImgWrap{position:relative;aspect-ratio:3/4;background:var(--card2);overflow:hidden}
 .cardImgWrap img{width:100%;height:100%;object-fit:cover;display:block}
@@ -565,7 +561,11 @@ function render(){
       ? '<span class="pickBox' + (batchSet[r.id] ? ' on' : '') + '" onclick="event.stopPropagation();togglePick(\'' + r.id + '\')">' + (batchSet[r.id] ? '✓' : '') + '</span>'
       : '';
     var noImgHtml = '<div class="noimg"' + (batchMode ? '' : ' onclick="quickUpload(' + idx + ',event)"') + '>' + (batchMode ? '暂无图片' : '暂无图片 · 点此上传') + '</div>';
-    var cardClick = batchMode ? 'togglePick(\'' + r.id + '\')' : (first ? 'zoomList(' + idx + ')' : 'openDetail(' + idx + ')');
+    var cardClick = batchMode ? 'togglePick(\'' + r.id + '\')' : (first ? 'zoomList(' + idx + ')' : 'quickUpload(' + idx + ',event)');
+    var actsRow = batchMode ? '' :
+      '<div class="cardActs">' +
+      '<button class="actBtn" onclick="event.stopPropagation();openDetail(' + idx + ')">✏️ 修改</button>' +
+      '<button class="actBtn" onclick="event.stopPropagation();copyTextByIdx(' + idx + ')">📋 复制提示词</button></div>';
     var inner = '';
     if(batchMode){
       inner = '<div class="cardImgWrap">' +
@@ -576,16 +576,13 @@ function render(){
       inner = '<div class="cardImgWrap">' +
         '<img loading="lazy" src="'+first+'" alt="" onerror="retryImg(this)">' +
         (imgs.length>1 ? '<span class="imgCount">'+imgs.length+' 图</span>' : '') + fav + pick +
-        '<div class="cardActions"><button class="actBtn" onclick="event.stopPropagation();openDetail(' + idx + ')">✏️ 修改</button></div>' +
-      '</div>' +
+      '</div>' + actsRow +
       '<div class="cardBody"><div class="cardPrompt">'+esc((r.prompt_text||'').slice(0,180))+'</div>' +
       (tagsHtml?'<div class="cardTags">'+tagsHtml+'</div>':'') +
-      '<div class="cardFoot"><button class="copyBtn" onclick="event.stopPropagation();copyTextByIdx(' + idx + ')">复制提示词</button><span class="cardDate">'+d+'</span></div></div>';
+      '<div class="cardFoot"><span class="cardDate">'+d+'</span></div></div>';
     } else {
       inner = '<div class="cardImgWrap">' + noImgHtml + fav + pick + '</div>' +
-        '<div class="noimgCard"><div class="noimgPrompt">'+esc((r.prompt_text||'').slice(0,140))+'</div>' +
-        '<div class="noimgActs"><button class="actBtn" onclick="event.stopPropagation();copyTextByIdx(' + idx + ')">📋 复制提示词</button>' +
-        '<button class="actBtn" onclick="event.stopPropagation();openDetail(' + idx + ')">✏️ 修改</button></div></div>';
+        '<div class="noimgPrompt">'+esc((r.prompt_text||'').slice(0,140))+'</div>' + actsRow;
     }
     return '<div class="card' + (batchMode ? ' picking' : '') + '" onclick="' + cardClick + '">' + inner + '</div>';
   }).join('');
