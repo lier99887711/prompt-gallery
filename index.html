@@ -216,7 +216,7 @@ header h1{font-size:18px;flex:1;white-space:nowrap}
 <div id="mainView">
   <header>
     <div class="headerRow">
-      <h1>📚 提示词图库 <span id="verTag" style="font-size:11px;color:var(--sub);font-weight:normal;margin-left:6px">v21</span></h1>
+      <h1>📚 提示词图库 <span id="verTag" style="font-size:11px;color:var(--sub);font-weight:normal;margin-left:6px">v22</span></h1>
       <button class="miniBtn" onclick="toggleBatch()">批量</button>
       <button class="miniBtn" onclick="openRandom()">🎲 随机</button>
       <button class="miniBtn" onclick="openStats()">📊 统计</button>
@@ -1027,10 +1027,7 @@ function saveRecord(){
     editingDirty = false;
     toast('已保存');
     if(res.new && res.id){ editing.id = res.id; }
-    editing.keepImages = savedImages;
-    editing.removedImages = [];
-    editing.newFiles = [];
-    renderEditImgs();
+    closeEdit();
     loadAll();
   })['catch'](function(e){
     btn.textContent = '保 存'; btn.disabled = false;
