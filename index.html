@@ -100,6 +100,11 @@ header h1{font-size:18px;flex:1;white-space:nowrap}
 #zoomClose{position:fixed;top:14px;right:18px;width:38px;height:38px;border-radius:50%;background:rgba(255,255,255,.16);color:#fff;border:none;font-size:22px;line-height:38px;z-index:202;cursor:pointer}
 
 .toast{position:fixed;left:50%;bottom:40px;transform:translateX(-50%);background:rgba(0,0,0,.85);color:#fff;padding:10px 20px;border-radius:999px;font-size:13px;z-index:300;opacity:0;transition:opacity .3s;pointer-events:none}
+.loadingMask{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:400;display:flex;align-items:center;justify-content:center}
+.loadingBox{background:#fff;border-radius:14px;padding:24px 32px;text-align:center;color:#333;font-size:14px}
+.loadingBox p{margin:10px 0 0}
+.spin{width:32px;height:32px;margin:0 auto;border:3px solid #e0e0e0;border-top-color:#e0636c;border-radius:50%;animation:sp 1s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
 .toast.show{opacity:1}
 .loading{text-align:center;color:var(--sub);padding:40px 0;font-size:14px}
 
@@ -285,6 +290,8 @@ header h1{font-size:18px;flex:1;white-space:nowrap}
 <!-- 全屏 -->
 <div id="zoomMask"><img id="zoomImg" alt=""><div id="zoomCount"></div><div id="zoomHint">上下滑动切换 · 滑到头关闭</div><button id="zoomClose">×</button></div>
 <div class="toast" id="toast"></div>
+<!-- 上传/保存中遮罩 -->
+<div class="loadingMask" id="loadingMask" style="display:none"><div class="loadingBox"><div class="spin"></div><p id="loadingText">处理中…</p></div></div>
 
 <!-- 编辑/新增弹窗 -->
 <div id="editMask">
@@ -676,6 +683,13 @@ function toast(msg){
   var el = document.getElementById('toast');
   el.textContent = msg; el.classList.add('show');
   clearTimeout(el._t); el._t = setTimeout(function(){ el.classList.remove('show'); }, 1800);
+}
+function showLoading(t){
+  document.getElementById('loadingText').textContent = t || '处理中…';
+  document.getElementById('loadingMask').style.display = 'flex';
+}
+function hideLoading(){
+  document.getElementById('loadingMask').style.display = 'none';
 }
 
 /* ---- 详情 ---- */
@@ -1379,12 +1393,14 @@ document.getElementById('quickFileInput').addEventListener('change', function(){
   }
   if(!tasks.length){ toast('未识别图片格式，请换一张试试'); return; }
   toast('上传中…');
+  showLoading('图片上传中，请稍候…');
   Promise.all(tasks).then(function(paths){
     var imgs = (rec.images||[]).concat(paths);
     return apiFetch('/rest/v1/prompts?id=eq.' + encodeURIComponent(rec.id), {
       method: 'PATCH', token: getToken(), body: { images: imgs }, raw: true
     });
   }).then(function(r){
+    hideLoading();
     if(r && !r.ok){ return r.json().then(function(d){ throw new Error(d.message||'保存失败'); }); }
     toast('已上传并自动保存');
     if(imgFilter === 'none'){
@@ -1398,6 +1414,7 @@ document.getElementById('quickFileInput').addEventListener('change', function(){
     loadAll();
     openEdit();
   })['catch'](function(e){
+    hideLoading();
     askConfirm('上传失败：' + (e && e.message ? e.message : e) + '\n\n请检查网络后重试，或改用「修改 → 添加图片」方式上传', null, '知道了');
   });
 });
