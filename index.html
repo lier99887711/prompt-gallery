@@ -103,6 +103,12 @@ header h1{font-size:18px;flex:1;white-space:nowrap}
 #zoomClose{position:fixed;top:14px;right:18px;width:38px;height:38px;border-radius:50%;background:rgba(255,255,255,.16);color:#fff;border:none;font-size:22px;line-height:38px;z-index:202;cursor:pointer}
 
 .toast{position:fixed;left:50%;bottom:40px;transform:translateX(-50%);background:rgba(0,0,0,.85);color:#fff;padding:10px 20px;border-radius:999px;font-size:13px;z-index:300;opacity:0;transition:opacity .3s;pointer-events:none}
+.sheetMask{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:250;display:none;align-items:flex-end;justify-content:center}
+.sheetMask.show{display:flex}
+.sheet{width:100%;max-width:480px;background:#fff;border-radius:16px 16px 0 0;padding:10px 12px calc(20px + env(safe-area-inset-bottom));box-shadow:0 -4px 20px rgba(0,0,0,.15)}
+.sheetTitle{text-align:center;font-size:13px;color:var(--sub);padding:8px 0 12px}
+.sheetBtn{display:block;width:100%;padding:14px 0;margin-bottom:8px;border:none;border-radius:12px;background:var(--card,#f5f5f7);font-size:15px;color:var(--text,#111);cursor:pointer}
+.sheetBtn.cancel{background:transparent;color:var(--sub);font-size:13px}
 .loadingMask{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:400;display:flex;align-items:center;justify-content:center}
 .loadingBox{background:#fff;border-radius:14px;padding:24px 32px;text-align:center;color:#333;font-size:14px}
 .loadingBox p{margin:10px 0 0}
@@ -210,7 +216,7 @@ header h1{font-size:18px;flex:1;white-space:nowrap}
 <div id="mainView">
   <header>
     <div class="headerRow">
-      <h1>📚 提示词图库 <span id="verTag" style="font-size:11px;color:var(--sub);font-weight:normal;margin-left:6px">v15</span></h1>
+      <h1>📚 提示词图库 <span id="verTag" style="font-size:11px;color:var(--sub);font-weight:normal;margin-left:6px">v17</span></h1>
       <button class="miniBtn" onclick="toggleBatch()">批量</button>
       <button class="miniBtn" onclick="openRandom()">🎲 随机</button>
       <button class="miniBtn" onclick="openStats()">📊 统计</button>
@@ -237,6 +243,7 @@ header h1{font-size:18px;flex:1;white-space:nowrap}
       <button class="tagChip" onclick="document.getElementById('importFile').click()">导入</button>
       <input type="file" id="importFile" accept=".json" style="display:none" onchange="importJson(this)">
       <input type="file" id="quickFileInput" accept="image/*" multiple style="display:none" onchange="quickFileChange(this)">
+      <input type="file" id="quickCameraInput" accept="image/*" capture="environment" style="display:none" onchange="quickCameraChange(this)">
     </div>
   </header>
   <div class="tagRow" id="tagRow"></div>
@@ -258,6 +265,16 @@ header h1{font-size:18px;flex:1;white-space:nowrap}
       <button class="miniBtn danger" onclick="emptyTrash()">清空回收站</button>
     </div>
     <div id="trashList"></div>
+  </div>
+</div>
+
+<!-- 上传方式底部菜单 -->
+<div id="uploadSheet" class="sheetMask" onclick="closeUploadSheet()">
+  <div class="sheet" onclick="event.stopPropagation()">
+    <div class="sheetTitle">上传图片到这条记录</div>
+    <button class="sheetBtn" onclick="uploadPick('camera')">📷 拍照上传</button>
+    <button class="sheetBtn" onclick="uploadPick('album')">🖼️ 从相册选择</button>
+    <button class="sheetBtn cancel" onclick="closeUploadSheet()">取消</button>
   </div>
 </div>
 
@@ -896,7 +913,7 @@ function removeNewFile(i){
 
 /* 选择文件 → 预览并暂存（保存时才上传） */
 function editFileChange(input){
-  var files = input.files;
+  var files = Array.prototype.slice.call(input.files);
   if(!files || !files.length || !editing) return;
   var added = 0;
   for(var i=0; i<files.length; i++){
@@ -1390,8 +1407,18 @@ function quickUpload(idx, ev){
   if(!rec){ return; }
   quickTarget = rec;
   quickIdx = idx;
-  document.getElementById('quickFileInput').click();
-  toast('请选择图片，选完自动上传');
+  document.getElementById('uploadSheet').classList.add('show');
+}
+function closeUploadSheet(){ document.getElementById('uploadSheet').classList.remove('show'); }
+function uploadPick(mode){
+  closeUploadSheet();
+  if(mode === 'camera'){
+    document.getElementById('quickCameraInput').click();
+    toast('拍摄或选择后自动上传');
+  }else{
+    document.getElementById('quickFileInput').click();
+    toast('请选择图片，选完自动上传');
+  }
 }
 function processQuickFiles(files, forcedRec){
   var rec = forcedRec || quickTarget || (quickIdx >= 0 ? filteredCache[quickIdx] : null);
@@ -1436,7 +1463,12 @@ function processQuickFiles(files, forcedRec){
   });
 }
 function quickFileChange(input){
-  var files = input.files;
+  var files = Array.prototype.slice.call(input.files);
+  input.value = '';
+  processQuickFiles(files);
+}
+function quickCameraChange(input){
+  var files = Array.prototype.slice.call(input.files);
   input.value = '';
   processQuickFiles(files);
 }
