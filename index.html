@@ -1339,6 +1339,12 @@ document.getElementById('quickFileInput').addEventListener('change', function(){
   }).then(function(r){
     if(r && !r.ok){ return r.json().then(function(d){ throw new Error(d.message||'保存失败'); }); }
     toast('已上传并自动保存');
+    if(imgFilter === 'none'){
+      imgFilter = '';
+      document.getElementById('fNone').classList.remove('on');
+      document.getElementById('fAll').classList.add('on');
+      toast('上传成功，已切回「全部」');
+    }
     loadAll();
   })['catch'](function(e){
     toast('上传失败：' + (e&&e.message?e.message:e));
