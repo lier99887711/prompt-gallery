@@ -964,7 +964,7 @@ function saveRecord(){
     loadAll();
   })['catch'](function(e){
     btn.textContent = '保 存'; btn.disabled = false;
-    toast('保存失败：' + (e && e.message ? e.message : e));
+    askConfirm('保存失败：' + (e && e.message ? e.message : e) + '\n\n请检查网络后重试', null, '知道了');
   });
 }
 
@@ -1395,7 +1395,7 @@ document.getElementById('quickFileInput').addEventListener('change', function(){
     loadAll();
     openEdit();
   })['catch'](function(e){
-    toast('上传失败：' + (e&&e.message?e.message:e));
+    askConfirm('上传失败：' + (e && e.message ? e.message : e) + '\n\n请检查网络后重试，或改用「修改 → 添加图片」方式上传', null, '知道了');
   });
 });
 </script>
