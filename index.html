@@ -52,7 +52,11 @@ header h1{font-size:18px;flex:1;white-space:nowrap}
 .cardActs{display:flex;gap:8px;padding:8px}
 .cardActs .actBtn{flex:1;background:var(--card2);border:1px solid var(--line);color:var(--sub);border-radius:8px;padding:8px 0;font-size:12px}
 .cardActs .actBtn:active{background:var(--accent);color:#fff}
-.noimgPrompt{font-size:12px;color:var(--text);line-height:1.45;padding:8px 10px 0;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;white-space:pre-line}
+.noimgPrompt{font-size:12px;color:var(--text);line-height:1.45;padding:8px 10px 0;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden;white-space:pre-line}
+.editLabelRow{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
+.editLabelRow label{margin-bottom:0}
+.pasteBtn{background:var(--card2);border:1px solid var(--line);color:var(--accent2);border-radius:8px;padding:4px 12px;font-size:12px;flex-shrink:0}
+.pasteBtn:active{background:var(--accent);color:#fff}
 .card{background:var(--card);border:1px solid var(--line);border-radius:16px;overflow:hidden;box-shadow:var(--shadow)}
 .cardImgWrap{position:relative;aspect-ratio:3/4;background:var(--card2);overflow:hidden}
 .cardImgWrap img{width:100%;height:100%;object-fit:cover;display:block}
@@ -293,7 +297,7 @@ header h1{font-size:18px;flex:1;white-space:nowrap}
       <div class="tip" style="margin-top:8px">原图直传，不压缩</div>
     </div>
     <div class="editField">
-      <label>提示词</label>
+      <div class="editLabelRow"><label>提示词</label><button type="button" class="pasteBtn" onclick="pasteClipboard()">📋 粘贴剪贴板</button></div>
       <textarea id="editPrompt" placeholder="输入提示词内容…" oninput="scheduleAutoTag()"></textarea>
     </div>
     <div class="editField">
@@ -640,9 +644,9 @@ function openDetail(idx){
   if(!rec) return;
   detail = rec;
   var imgs = rec.images || [];
-  document.getElementById('detailImgs').innerHTML = imgs.map(function(p){
+  document.getElementById('detailImgs').innerHTML = imgs.map(function(p, i){
     var url = signedCache[p] || '';
-    return url ? '<img src="'+url+'" onclick="zoom(\''+url+'\')" alt="">' : '';
+    return url ? '<img src="'+url+'" onclick="zoomAt('+i+')" alt="">' : '';
   }).join('') || '<div class="noimg" style="color:var(--sub);text-align:center;padding:20px">暂无图片</div>';
   document.getElementById('detailPrompt').textContent = rec.prompt_text || '';
   var vars = rec.variant_prompts || [];
@@ -670,10 +674,17 @@ var zoomImgs = [], zoomIdx = 0;
 function zoomList(idx){
   var rec = filteredCache[idx];
   if(!rec) return;
+  zoomImgsOf(rec, 0);
+}
+function zoomAt(i){
+  if(detail) zoomImgsOf(detail, i);
+}
+function zoomImgsOf(rec, i){
   var imgs = (rec.images||[]).map(function(p){ return signedCache[p]||''; }).filter(Boolean);
   if(!imgs.length) return;
-  zoomImgs = imgs; zoomIdx = 0;
-  showZoom(0);
+  zoomImgs = imgs;
+  zoomIdx = Math.min(i||0, imgs.length-1);
+  showZoom(zoomIdx);
 }
 function zoom(url){ zoomImgs = [url]; zoomIdx = 0; showZoom(0); }
 function showZoom(i){
@@ -687,15 +698,23 @@ function closeZoom(){
 }
 (function(){
   var zm = document.getElementById('zoomMask');
-  var ty = null, tx = null;
-  zm.addEventListener('touchstart', function(e){ ty = e.touches[0].clientY; tx = e.touches[0].clientX; }, {passive:true});
+  var sy = null, sx = null, moved = false;
+  zm.addEventListener('touchstart', function(e){
+    sy = e.touches[0].clientY; sx = e.touches[0].clientX; moved = false;
+  }, {passive:true});
+  zm.addEventListener('touchmove', function(e){
+    if(sy !== null){
+      var d = e.touches[0].clientY - sy;
+      if(Math.abs(d) > 8) moved = true;
+    }
+  }, {passive:true});
   zm.addEventListener('touchend', function(e){
-    if(ty === null) return;
-    var dy = e.changedTouches[0].clientY - ty;
-    var dx = e.changedTouches[0].clientX - tx;
-    ty = null;
-    if(Math.abs(dy) < 30 && Math.abs(dx) < 30) return;
-    if(Math.abs(dy) > Math.abs(dx)){
+    if(sy === null) return;
+    var dy = e.changedTouches[0].clientY - sy;
+    var dx = e.changedTouches[0].clientX - sx;
+    sy = null;
+    if(!moved && Math.abs(dy) < 15 && Math.abs(dx) < 15) return;
+    if(Math.abs(dy) > Math.abs(dx) && Math.abs(dy) >= 15){
       if(dy < 0){ if(zoomIdx < zoomImgs.length-1){ showZoom(zoomIdx+1); } else { closeZoom(); } }
       else { if(zoomIdx > 0){ showZoom(zoomIdx-1); } else { closeZoom(); } }
     }
@@ -1220,6 +1239,24 @@ function today(){
 
 /* ========== 标签自动生成（800ms 防抖 + 关键词规则） ========== */
 var tagTimer = null;
+function pasteClipboard(){
+  if(navigator.clipboard && navigator.clipboard.readText){
+    navigator.clipboard.readText().then(function(text){
+      if(text && String(text).trim()){
+        var el = document.getElementById('editPrompt');
+        el.value = String(text).trim();
+        if(typeof scheduleAutoTag === 'function') scheduleAutoTag();
+        toast('已粘贴剪贴板内容');
+      } else {
+        toast('剪贴板是空的');
+      }
+    })['catch'](function(){
+      toast('读取失败，请长按输入框粘贴');
+    });
+  } else {
+    toast('请长按输入框手动粘贴');
+  }
+}
 function scheduleAutoTag(){
   editingDirty = true;
   clearTimeout(tagTimer);
