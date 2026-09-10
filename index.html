@@ -190,6 +190,9 @@ header h1{font-size:18px;flex:1;white-space:nowrap}
 </head>
 <body>
 
+<!-- 全局错误显示条（用于诊断） -->
+<div id="errBanner" style="display:none;position:fixed;top:0;left:0;right:0;background:#c0392b;color:#fff;padding:10px 12px;font-size:12px;z-index:999;white-space:pre-wrap;word-break:break-all"></div>
+
 <!-- 登录 -->
 <div id="loginView" class="active">
   <div class="loginBox">
@@ -339,6 +342,16 @@ header h1{font-size:18px;flex:1;white-space:nowrap}
 </div>
 
 <script>
+/* ========== 全局错误捕获（诊断用，出错时顶部红条显示） ========== */
+function showErr(msg){
+  var el = document.getElementById('errBanner');
+  if(!el) return;
+  el.textContent = '⚠ ' + msg;
+  el.style.display = 'block';
+}
+window.addEventListener('error', function(e){ showErr('JS错误: ' + (e.message || e.error || '未知')); });
+window.addEventListener('unhandledrejection', function(e){ showErr('Promise错误: ' + ((e.reason && (e.reason.message || e.reason)) || '未知')); });
+
 /* ========== 纯 fetch 直连 Supabase，不依赖任何第三方库 ========== */
 var SUPABASE_URL = 'https://cpftqgptrotgfpspnsol.supabase.co';
 var ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNwZnRxZ3B0cm90Z2Zwc3Buc29sIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg5OTAwMjEsImV4cCI6MjEwNDU2NjAyMX0.WVytU2E6QhCZuzbW-fGMwWhqpORtLCvuU8xViI-bFTU';
@@ -863,7 +876,7 @@ function renderEditImgs(){
     var prev = f.preview || '';
     html += '<div class="editImg"><img src="'+prev+'"><span class="newTag">新</span><button class="x" onclick="removeNewFile('+i+')">✕</button></div>';
   });
-  html += '<div class="addImgBox" onclick="document.getElementById(\'editFileInput\').click()">＋<br>添加图片</div>';
+  html += '<div class="addImgBox" onclick="openEditPicker()">＋<br>添加图片</div>';
   el.innerHTML = html;
 }
 
@@ -1375,16 +1388,26 @@ function quickUpload(idx, ev){
   if(!rec){ return; }
   quickTarget = rec;
   quickIdx = idx;
-  document.getElementById('quickFileInput').click();
+  if(window.showOpenFilePicker){
+    showOpenFilePicker({
+      multiple: true,
+      types: [{ description: '图片', accept: { 'image/*': ['.png','.jpg','.jpeg','.webp','.gif','.heic','.heif','.bmp'] } }]
+    }).then(function(handles){
+      return Promise.all(handles.map(function(h){ return h.getFile(); }));
+    }).then(function(files){
+      processQuickFiles(files);
+    })['catch'](function(e){
+      if(e && e.name !== 'AbortError'){ toast('选择失败：' + (e.message||e)); }
+    });
+  } else {
+    document.getElementById('quickFileInput').click();
+  }
 }
-function quickFileChange(input){
-  var files = input.files;
-  input.value = '';
+function processQuickFiles(files){
   var rec = quickTarget || (quickIdx >= 0 ? filteredCache[quickIdx] : null);
   quickTarget = null;
   quickIdx = -1;
-  if(!files || !files.length || !rec) return;
-  var rid = rec.id;
+  if(!files || !files.length || !rec) return;  var rid = rec.id;
   var tasks = [];
   for(var i=0; i<files.length; i++){
     var f = files[i];
@@ -1420,6 +1443,39 @@ function quickFileChange(input){
     hideLoading();
     askConfirm('上传失败：' + (e && e.message ? e.message : e) + '\n\n请检查网络后重试，或改用「修改 → 添加图片」方式上传', null, '知道了');
   });
+}
+function quickFileChange(input){
+  var files = input.files;
+  input.value = '';
+  processQuickFiles(files);
+}
+function openEditPicker(){
+  if(window.showOpenFilePicker){
+    showOpenFilePicker({
+      multiple: true,
+      types: [{ description: '图片', accept: { 'image/*': ['.png','.jpg','.jpeg','.webp','.gif','.heic','.heif','.bmp'] } }]
+    }).then(function(handles){
+      return Promise.all(handles.map(function(h){ return h.getFile(); }));
+    }).then(function(files){
+      addEditFiles(files);
+    })['catch'](function(e){
+      if(e && e.name !== 'AbortError'){ toast('选择失败：' + (e.message||e)); }
+    });
+  } else {
+    document.getElementById('editFileInput').click();
+  }
+}
+function addEditFiles(files){
+  if(!files || !files.length || !editing) return;
+  var added = 0;
+  for(var i=0; i<files.length; i++){
+    var f = files[i];
+    if(f.type && f.type.indexOf('image/') !== 0) continue;
+    editing.newFiles.push({ file: f, path: '', preview: URL.createObjectURL(f) });
+    added++;
+  }
+  if(added === 0){ toast('未识别图片格式，请换一张试试'); return; }
+  renderEditImgs();
 }
 </script>
 </body>
