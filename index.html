@@ -216,7 +216,7 @@ header h1{font-size:18px;flex:1;white-space:nowrap}
 <div id="mainView">
   <header>
     <div class="headerRow">
-      <h1>📚 提示词图库 <span id="verTag" style="font-size:11px;color:var(--sub);font-weight:normal;margin-left:6px">v22</span></h1>
+      <h1>📚 提示词图库 <span id="verTag" style="font-size:11px;color:var(--sub);font-weight:normal;margin-left:6px">v23</span></h1>
       <button class="miniBtn" onclick="toggleBatch()">批量</button>
       <button class="miniBtn" onclick="openRandom()">🎲 随机</button>
       <button class="miniBtn" onclick="openStats()">📊 统计</button>
@@ -465,7 +465,7 @@ function refreshToken(){
   }).catch(function(){ return false; });
 }
 
-/* ---- API 封装 ---- */
+/* ---- API 封装（自动处理 JWT 过期 → 刷新令牌 → 重试） ---- */
 function apiFetch(path, opts){
   opts = opts || {};
   var headers = {
@@ -474,13 +474,32 @@ function apiFetch(path, opts){
     'Content-Type': 'application/json'
   };
   if(opts.prefer) headers['Prefer'] = opts.prefer;
-  return fetch(SUPABASE_URL + path, {
-    method: opts.method || 'GET',
-    headers: headers,
-    body: opts.body ? JSON.stringify(opts.body) : undefined
-  }).then(function(r){
-    if(opts.raw) return r;
-    return r.json()['catch'](function(){ return {}; });
+  function doFetch(token){
+    headers['Authorization'] = 'Bearer ' + (opts.token || token || ANON_KEY);
+    return fetch(SUPABASE_URL + path, {
+      method: opts.method || 'GET',
+      headers: headers,
+      body: opts.body ? JSON.stringify(opts.body) : undefined
+    }).then(function(r){
+      if(opts.raw) return r;
+      return r.json()['catch'](function(){ return {}; });
+    });
+  }
+  function isExpiredResp(r){
+    if(!r) return false;
+    if(typeof r.status === 'number' && r.status === 401) return true;
+    if(String(r.code || '').indexOf('JWT') >= 0) return true;
+    if(String(r.message || r.msg || r.error_description || '').indexOf('expired') >= 0) return true;
+    return false;
+  }
+  return doFetch(getToken()).then(function(r){
+    if(isExpiredResp(r)){
+      return refreshToken().then(function(ok){
+        if(ok) return doFetch(getToken());
+        return r;
+      });
+    }
+    return r;
   });
 }
 
