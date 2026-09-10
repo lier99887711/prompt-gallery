@@ -1390,20 +1390,8 @@ function quickUpload(idx, ev){
   if(!rec){ return; }
   quickTarget = rec;
   quickIdx = idx;
-  if(window.showOpenFilePicker){
-    showOpenFilePicker({
-      multiple: true,
-      types: [{ description: '图片', accept: { 'image/*': ['.png','.jpg','.jpeg','.webp','.gif','.heic','.heif','.bmp'] } }]
-    }).then(function(handles){
-      return Promise.all(handles.map(function(h){ return h.getFile(); }));
-    }).then(function(files){
-      processQuickFiles(files, rec);
-    })['catch'](function(e){
-      if(e && e.name !== 'AbortError'){ toast('选择失败：' + (e.message||e)); }
-    });
-  } else {
-    document.getElementById('quickFileInput').click();
-  }
+  document.getElementById('quickFileInput').click();
+  toast('请选择图片，选完自动上传');
 }
 function processQuickFiles(files, forcedRec){
   var rec = forcedRec || quickTarget || (quickIdx >= 0 ? filteredCache[quickIdx] : null);
@@ -1453,20 +1441,8 @@ function quickFileChange(input){
   processQuickFiles(files);
 }
 function openEditPicker(){
-  if(window.showOpenFilePicker){
-    showOpenFilePicker({
-      multiple: true,
-      types: [{ description: '图片', accept: { 'image/*': ['.png','.jpg','.jpeg','.webp','.gif','.heic','.heif','.bmp'] } }]
-    }).then(function(handles){
-      return Promise.all(handles.map(function(h){ return h.getFile(); }));
-    }).then(function(files){
-      addEditFiles(files);
-    })['catch'](function(e){
-      if(e && e.name !== 'AbortError'){ toast('选择失败：' + (e.message||e)); }
-    });
-  } else {
-    document.getElementById('editFileInput').click();
-  }
+  document.getElementById('editFileInput').click();
+  toast('请选择图片');
 }
 function addEditFiles(files){
   if(!files || !files.length || !editing) return;
