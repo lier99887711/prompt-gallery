@@ -216,7 +216,7 @@ header h1{font-size:18px;flex:1;white-space:nowrap}
 <div id="mainView">
   <header>
     <div class="headerRow">
-      <h1>📚 提示词图库 <span id="verTag" style="font-size:11px;color:var(--sub);font-weight:normal;margin-left:6px">v17</span></h1>
+      <h1>📚 提示词图库 <span id="verTag" style="font-size:11px;color:var(--sub);font-weight:normal;margin-left:6px">v18</span></h1>
       <button class="miniBtn" onclick="toggleBatch()">批量</button>
       <button class="miniBtn" onclick="openRandom()">🎲 随机</button>
       <button class="miniBtn" onclick="openStats()">📊 统计</button>
@@ -1436,10 +1436,11 @@ function processQuickFiles(files, forcedRec){
     (function(p, ff){ tasks.push(uploadToStorage(p, ff).then(function(){ return p; })); })(path, f);
   }
   if(!tasks.length){ toast('未识别图片格式，请换一张试试'); return; }
+  var imgs = [];
   toast('上传中…');
   showLoading('图片上传中，请稍候…');
   Promise.all(tasks).then(function(paths){
-    var imgs = (rec.images||[]).concat(paths);
+    imgs = (rec.images||[]).concat(paths);
     return apiFetch('/rest/v1/prompts?id=eq.' + encodeURIComponent(rec.id), {
       method: 'PATCH', token: getToken(), body: { images: imgs }, raw: true
     });
