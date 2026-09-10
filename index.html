@@ -331,8 +331,50 @@ header h1{font-size:18px;flex:1;white-space:nowrap}
 <script>
 /* ========== 纯 fetch 直连 Supabase，不依赖任何第三方库 ========== */
 var SUPABASE_URL = 'https://cpftqgptrotgfpspnsol.supabase.co';
-var FUNCTIONS_URL = 'https://cpftqgptrotgfpspnsol.functions.supabase.co'; // B2 图片代理（Edge Function）
 var ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNwZnRxZ3B0cm90Z2Zwc3Buc29sIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg5OTAwMjEsImV4cCI6MjEwNDU2NjAyMX0.WVytU2E6QhCZuzbW-fGMwWhqpORtLCvuU8xViI-bFTU';
+
+/* ========== Cloudflare R2（图片存储） ========== */
+var R2_BASE = 'https://pub-cbc63f447e104a6db15178814dca21eb.r2.dev';            // r2.dev 公开域名（读图直链）
+var R2_ENDPOINT = 'https://410375531f1a5808739b4b9bec773354.r2.cloudflarestorage.com'; // S3 API 端点（上传/删除）
+var R2_BUCKET = 'llllllllmmm';
+var R2_AK = 'c0bf6363e6d65ced70d25a351d8a2279';
+var R2_SK = '5d67e6968e305f747ed4bb6c0ae5c6b06f9501b7459499a99c21e283a9c5d287';
+/* SigV4 签名工具（浏览器端直传 R2） */
+function toHexBytes(u8){ return Array.from(u8).map(function(b){ return b.toString(16).padStart(2,'0'); }).join(''); }
+async function sha256Hex(str){
+  var buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+  return toHexBytes(new Uint8Array(buf));
+}
+async function hmacBytes(keyBytes, data){
+  var k = await crypto.subtle.importKey('raw', keyBytes, {name:'HMAC', hash:'SHA-256'}, false, ['sign']);
+  return new Uint8Array(await crypto.subtle.sign('HMAC', k, new TextEncoder().encode(data)));
+}
+async function r2Request(method, key, bodyBytes){
+  var host = new URL(R2_ENDPOINT).host;
+  var now = new Date();
+  var amzDate = now.toISOString().replace(/[:-]/g,'').replace(/\.\d{3}/,'');
+  var dateStamp = amzDate.slice(0,8);
+  var region = 'auto', service = 's3';
+  var payloadHash = bodyBytes && bodyBytes.length ? toHexBytes(new Uint8Array(await crypto.subtle.digest('SHA-256', bodyBytes))) : 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855';
+  var encKey = key.split('/').map(encodeURIComponent).join('/');
+  var canonicalHeaders = 'host:'+host+'\nx-amz-content-sha256:'+payloadHash+'\nx-amz-date:'+amzDate+'\n';
+  var signedHeaders = 'host;x-amz-content-sha256;x-amz-date';
+  var canonicalRequest = [method, '/'+R2_BUCKET+'/'+encKey, '', canonicalHeaders, signedHeaders, payloadHash].join('\n');
+  var scope = dateStamp+'/'+region+'/'+service+'/aws4_request';
+  var stringToSign = ['AWS4-HMAC-SHA256', amzDate, scope, await sha256Hex(canonicalRequest)].join('\n');
+  var kDate = await hmacBytes('AWS4'+R2_SK, dateStamp);
+  var kRegion = await hmacBytes(kDate, region);
+  var kService = await hmacBytes(kRegion, service);
+  var kSigning = await hmacBytes(kService, 'aws4_request');
+  var signature = toHexBytes(await hmacBytes(kSigning, stringToSign));
+  var auth = 'AWS4-HMAC-SHA256 Credential='+R2_AK+'/'+scope+', SignedHeaders='+signedHeaders+', Signature='+signature;
+  var resp = await fetch(R2_ENDPOINT+'/'+R2_BUCKET+'/'+encKey, {
+    method: method,
+    headers: { 'Authorization': auth, 'x-amz-date': amzDate, 'x-amz-content-sha256': payloadHash },
+    body: bodyBytes && bodyBytes.length ? bodyBytes : undefined
+  });
+  return resp;
+}
 
 var records = [];
 var signedCache = {};   // path -> signedURL
@@ -474,7 +516,7 @@ function loadAll(){
 }
 
 function preSignImages(){
-  // 收集所有图片路径（去重）
+  // 收集所有图片路径（去重）→ R2 r2.dev 直链
   var paths = [];
   var seen = {};
   records.forEach(function(r){
@@ -482,11 +524,8 @@ function preSignImages(){
       if(!seen[p]){ seen[p] = 1; paths.push(p); }
     });
   });
-  // B2 代理 URL：无需预签名，直接拼接（函数内部校验 JWT）
-  var token = getToken();
   paths.forEach(function(p){
-    var enc = p.split('/').map(function(seg){ return encodeURIComponent(seg); }).join('/');
-    signedCache[p] = FUNCTIONS_URL + '/b2proxy?path=' + enc + '&token=' + encodeURIComponent(token);
+    signedCache[p] = R2_BASE + '/' + p;
   });
   render();
 }
@@ -835,32 +874,27 @@ document.getElementById('editFileInput').addEventListener('change', function(){
   renderEditImgs();
 });
 
-/* storage 上传 */
+/* storage 上传（直传 Cloudflare R2，SigV4） */
 function uploadToStorage(path, file){
-  // 通过 B2 代理上传（函数内把 base64 写入 Backblaze B2）
   return new Promise(function(resolve, reject){
     var reader = new FileReader();
     reader.onload = function(){
-      var b64 = String(reader.result).split(',')[1] || '';
-      fetch(FUNCTIONS_URL + '/b2proxy', {
-        method: 'POST',
-        headers: { 'Authorization': 'Bearer ' + getToken(), 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'upload', path: path, contentBase64: b64, contentType: file.type || 'image/png' })
-      }).then(function(r){ return r.json(); }).then(function(d){
-        if(d.ok){ resolve(d); } else { reject(new Error(d.err || '上传失败')); }
+      var bytes = new Uint8Array(reader.result);
+      r2Request('PUT', path, bytes).then(function(resp){
+        if(resp.ok){ resolve({ ok: true }); }
+        else { return resp.text().then(function(t){ throw new Error('HTTP '+resp.status+' '+(t||'').slice(0,80)); }); }
       }).catch(function(e){ reject(e); });
     };
     reader.onerror = function(){ reject(new Error('读取文件失败')); };
-    reader.readAsDataURL(file);
+    reader.readAsArrayBuffer(file);
   });
 }
 function deleteFromStorage(path){
-  // 通过 B2 代理删除
-  return fetch(FUNCTIONS_URL + '/b2proxy', {
-    method: 'POST',
-    headers: { 'Authorization': 'Bearer ' + getToken(), 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action: 'delete', path: path })
-  }).then(function(r){ return r.json(); }).then(function(d){ return !!(d && d.ok); });
+  // 直删 R2 对象
+  return r2Request('DELETE', path, null).then(function(resp){
+    if(resp.ok || resp.status === 404) return { ok: true };
+    return { ok: false };
+  });
 }
 
 /* 保存 */
