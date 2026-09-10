@@ -92,9 +92,12 @@ header h1{font-size:18px;flex:1;white-space:nowrap}
 .detailMeta{color:var(--sub);font-size:11px;text-align:center;margin-top:16px;line-height:1.8}
 
 /* 全屏看图 */
-#zoomMask{display:none;position:fixed;inset:0;background:#000;z-index:200;align-items:center;justify-content:center}
+#zoomMask{display:none;position:fixed;inset:0;background:#000;z-index:200;align-items:center;justify-content:center;touch-action:none}
 #zoomMask.open{display:flex}
-#zoomMask img{max-width:100%;max-height:100%;object-fit:contain}
+#zoomMask img{max-width:100%;max-height:100%;object-fit:contain;pointer-events:none}
+#zoomCount{position:fixed;top:18px;left:50%;transform:translateX(-50%);color:#fff;background:rgba(0,0,0,.55);padding:4px 14px;border-radius:999px;font-size:13px;z-index:202}
+#zoomHint{position:fixed;bottom:26px;left:50%;transform:translateX(-50%);color:rgba(255,255,255,.55);font-size:12px;z-index:202;pointer-events:none;white-space:nowrap}
+#zoomClose{position:fixed;top:14px;right:18px;width:38px;height:38px;border-radius:50%;background:rgba(255,255,255,.16);color:#fff;border:none;font-size:22px;line-height:38px;z-index:202;cursor:pointer}
 
 .toast{position:fixed;left:50%;bottom:40px;transform:translateX(-50%);background:rgba(0,0,0,.85);color:#fff;padding:10px 20px;border-radius:999px;font-size:13px;z-index:300;opacity:0;transition:opacity .3s;pointer-events:none}
 .toast.show{opacity:1}
@@ -280,7 +283,7 @@ header h1{font-size:18px;flex:1;white-space:nowrap}
 </div>
 
 <!-- 全屏 -->
-<div id="zoomMask"><img id="zoomImg" alt=""></div>
+<div id="zoomMask"><img id="zoomImg" alt=""><div id="zoomCount"></div><div id="zoomHint">上下滑动切换 · 滑到头关闭</div><button id="zoomClose">×</button></div>
 <div class="toast" id="toast"></div>
 
 <!-- 编辑/新增弹窗 -->
@@ -562,27 +565,29 @@ function render(){
       ? '<span class="pickBox' + (batchSet[r.id] ? ' on' : '') + '" onclick="event.stopPropagation();togglePick(\'' + r.id + '\')">' + (batchSet[r.id] ? '✓' : '') + '</span>'
       : '';
     var noImgHtml = '<div class="noimg"' + (batchMode ? '' : ' onclick="quickUpload(' + idx + ',event)"') + '>' + (batchMode ? '暂无图片' : '暂无图片 · 点此上传') + '</div>';
-    var cardClick = batchMode ? 'togglePick(\'' + r.id + '\')' : (first ? 'zoom(\'' + first + '\')' : 'openDetail(' + idx + ')');
-    var acts = '';
+    var cardClick = batchMode ? 'togglePick(\'' + r.id + '\')' : (first ? 'zoomList(' + idx + ')' : 'openDetail(' + idx + ')');
+    var inner = '';
     if(batchMode){
-      acts = '';
-    } else if(first){
-      acts = '<div class="cardActions"><button class="actBtn" onclick="event.stopPropagation();openDetail(' + idx + ')">✏️ 修改</button></div>';
-    } else {
-      acts = '<div class="noimgCard"><div class="noimgPrompt">'+esc((r.prompt_text||'').slice(0,140))+'</div><div class="noimgActs"><button class="actBtn" onclick="event.stopPropagation();copyTextByIdx(' + idx + ')">📋 复制提示词</button><button class="actBtn" onclick="event.stopPropagation();openDetail(' + idx + ')">✏️ 修改</button></div></div>';
-    }
-    return '<div class="card' + (batchMode ? ' picking' : '') + '" onclick="' + cardClick + '">' +
-      '<div class="cardImgWrap">' +
+      inner = '<div class="cardImgWrap">' +
         (first ? '<img loading="lazy" src="'+first+'" alt="" onerror="retryImg(this)">' : noImgHtml) +
-        (imgs.length>1 ? '<span class="imgCount">'+imgs.length+' 图</span>' : '') +
-        fav + pick + acts +
+        (imgs.length>1 ? '<span class="imgCount">'+imgs.length+' 图</span>' : '') + fav + pick +
+      '</div>';
+    } else if(first){
+      inner = '<div class="cardImgWrap">' +
+        '<img loading="lazy" src="'+first+'" alt="" onerror="retryImg(this)">' +
+        (imgs.length>1 ? '<span class="imgCount">'+imgs.length+' 图</span>' : '') + fav + pick +
+        '<div class="cardActions"><button class="actBtn" onclick="event.stopPropagation();openDetail(' + idx + ')">✏️ 修改</button></div>' +
       '</div>' +
-      (first && !batchMode
-        ? '<div class="cardBody"><div class="cardPrompt">'+esc((r.prompt_text||'').slice(0,180))+'</div>' +
-          (tagsHtml?'<div class="cardTags">'+tagsHtml+'</div>':'') +
-          '<div class="cardFoot"><button class="copyBtn" onclick="event.stopPropagation();copyTextByIdx(' + idx + ')">复制提示词</button><span class="cardDate">'+d+'</span></div></div>'
-        : '') +
-    '</div>';
+      '<div class="cardBody"><div class="cardPrompt">'+esc((r.prompt_text||'').slice(0,180))+'</div>' +
+      (tagsHtml?'<div class="cardTags">'+tagsHtml+'</div>':'') +
+      '<div class="cardFoot"><button class="copyBtn" onclick="event.stopPropagation();copyTextByIdx(' + idx + ')">复制提示词</button><span class="cardDate">'+d+'</span></div></div>';
+    } else {
+      inner = '<div class="cardImgWrap">' + noImgHtml + fav + pick + '</div>' +
+        '<div class="noimgCard"><div class="noimgPrompt">'+esc((r.prompt_text||'').slice(0,140))+'</div>' +
+        '<div class="noimgActs"><button class="actBtn" onclick="event.stopPropagation();copyTextByIdx(' + idx + ')">📋 复制提示词</button>' +
+        '<button class="actBtn" onclick="event.stopPropagation();openDetail(' + idx + ')">✏️ 修改</button></div></div>';
+    }
+    return '<div class="card' + (batchMode ? ' picking' : '') + '" onclick="' + cardClick + '">' + inner + '</div>';
   }).join('');
 }
 
@@ -664,8 +669,46 @@ function copyDetail(){
   if(rt.length) parts.push('标签：' + rt.join('、'));
   copyText(parts.join('\n\n'));
 }
-function zoom(url){ document.getElementById('zoomImg').src = url; document.getElementById('zoomMask').classList.add('open'); }
-document.getElementById('zoomMask').addEventListener('click', function(){ document.getElementById('zoomMask').classList.remove('open'); });
+var zoomImgs = [], zoomIdx = 0;
+function zoomList(idx){
+  var rec = filteredCache[idx];
+  if(!rec) return;
+  var imgs = (rec.images||[]).map(function(p){ return signedCache[p]||''; }).filter(Boolean);
+  if(!imgs.length) return;
+  zoomImgs = imgs; zoomIdx = 0;
+  showZoom(0);
+}
+function zoom(url){ zoomImgs = [url]; zoomIdx = 0; showZoom(0); }
+function showZoom(i){
+  zoomIdx = i;
+  document.getElementById('zoomImg').src = zoomImgs[i];
+  document.getElementById('zoomCount').textContent = (i+1) + ' / ' + zoomImgs.length;
+  document.getElementById('zoomMask').classList.add('open');
+}
+function closeZoom(){
+  document.getElementById('zoomMask').classList.remove('open');
+}
+(function(){
+  var zm = document.getElementById('zoomMask');
+  var ty = null, tx = null;
+  zm.addEventListener('touchstart', function(e){ ty = e.touches[0].clientY; tx = e.touches[0].clientX; }, {passive:true});
+  zm.addEventListener('touchend', function(e){
+    if(ty === null) return;
+    var dy = e.changedTouches[0].clientY - ty;
+    var dx = e.changedTouches[0].clientX - tx;
+    ty = null;
+    if(Math.abs(dy) < 30 && Math.abs(dx) < 30) return;
+    if(Math.abs(dy) > Math.abs(dx)){
+      if(dy < 0){ if(zoomIdx < zoomImgs.length-1){ showZoom(zoomIdx+1); } else { closeZoom(); } }
+      else { if(zoomIdx > 0){ showZoom(zoomIdx-1); } else { closeZoom(); } }
+    }
+  }, {passive:true});
+  var isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+  if(!isTouch){
+    zm.addEventListener('click', closeZoom);
+  }
+  document.getElementById('zoomClose').addEventListener('click', closeZoom);
+})();
 document.getElementById('detailMask').addEventListener('click', function(e){ if(e.target.id==='detailMask') closeDetail(); });
 
 /* ---- 启动：检查已有登录态 ---- */
