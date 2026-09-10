@@ -671,11 +671,13 @@ function retryImg(img){
     img.src = '';
     setTimeout(function(){ img.src = url; }, 300);
   }else{
+    var parent = img.parentNode;
+    if(!parent) return;
     var ph = document.createElement('div');
     ph.className = 'noimg';
     ph.textContent = '图片加载失败';
-    img.parentNode.innerHTML = '';
-    img.parentNode.appendChild(ph);
+    parent.innerHTML = '';
+    parent.appendChild(ph);
   }
 }
 
