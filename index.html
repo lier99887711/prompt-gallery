@@ -1397,7 +1397,7 @@ function quickUpload(idx, ev){
     }).then(function(handles){
       return Promise.all(handles.map(function(h){ return h.getFile(); }));
     }).then(function(files){
-      processQuickFiles(files);
+      processQuickFiles(files, rec);
     })['catch'](function(e){
       if(e && e.name !== 'AbortError'){ toast('选择失败：' + (e.message||e)); }
     });
@@ -1405,11 +1405,12 @@ function quickUpload(idx, ev){
     document.getElementById('quickFileInput').click();
   }
 }
-function processQuickFiles(files){
-  var rec = quickTarget || (quickIdx >= 0 ? filteredCache[quickIdx] : null);
+function processQuickFiles(files, forcedRec){
+  var rec = forcedRec || quickTarget || (quickIdx >= 0 ? filteredCache[quickIdx] : null);
   quickTarget = null;
   quickIdx = -1;
-  if(!files || !files.length || !rec) return;  var rid = rec.id;
+  if(!files || !files.length){ toast('没有获取到图片文件，请重试'); return; }
+  if(!rec){ toast('未找到对应记录，请重试'); return; }  var rid = rec.id;
   var tasks = [];
   for(var i=0; i<files.length; i++){
     var f = files[i];
