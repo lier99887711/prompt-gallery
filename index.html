@@ -216,7 +216,7 @@ header h1{font-size:18px;flex:1;white-space:nowrap}
 <div id="mainView">
   <header>
     <div class="headerRow">
-      <h1>📚 提示词图库 <span id="verTag" style="font-size:11px;color:var(--sub);font-weight:normal;margin-left:6px">v23</span></h1>
+      <h1>📚 提示词图库 <span id="verTag" style="font-size:11px;color:var(--sub);font-weight:normal;margin-left:6px">v24</span></h1>
       <button class="miniBtn" onclick="toggleBatch()">批量</button>
       <button class="miniBtn" onclick="openRandom()">🎲 随机</button>
       <button class="miniBtn" onclick="openStats()">📊 统计</button>
@@ -235,6 +235,7 @@ header h1{font-size:18px;flex:1;white-space:nowrap}
       <button class="tagChip" id="fHas" onclick="setImgFilter('has')">有图</button>
       <button class="tagChip" id="fNone" onclick="setImgFilter('none')">无图</button>
       <button class="tagChip" id="fFav" onclick="setImgFilter('fav')">★ 收藏</button>
+      <button class="tagChip" id="hideImgBtn" onclick="toggleHideImgs()">👁 隐藏图片</button>
       <span style="flex:1"></span>
       <button class="tagChip" onclick="showTrash()">🗑 回收站</button>
       <button class="tagChip" onclick="saveAllCurrent()">💾 保存全部图片</button>
@@ -423,6 +424,7 @@ async function r2Request(method, key, bodyBytes){
 }
 
 var records = [];
+var hideImgs = (function(){ try{ return localStorage.getItem('pg_hide_imgs') === '1'; }catch(e){ return false; } })();
 var signedCache = {};   // path -> signedURL
 var filteredCache = []; // 当前过滤结果
 var currentTag = '';
@@ -631,6 +633,14 @@ function clearDates(){
   document.getElementById('dateTo').value = '';
   if(!trashMode) render();
 }
+function toggleHideImgs(){
+  hideImgs = !hideImgs;
+  try{ localStorage.setItem('pg_hide_imgs', hideImgs ? '1' : '0'); }catch(e){}
+  var hb = document.getElementById('hideImgBtn');
+  if(hb) hb.textContent = hideImgs ? '🙈 显示图片' : '👁 隐藏图片';
+  toast(hideImgs ? '已隐藏图片（点击图片可临时查看）' : '已显示图片');
+  if(!trashMode) render();
+}
 
 /* ---- 渲染 ---- */
 function allTags(){
@@ -658,6 +668,8 @@ function render(){
   filteredCache = list;
   document.getElementById('count').textContent = '共 ' + list.length + ' 条记录';
   var el = document.getElementById('list');
+  var hb = document.getElementById('hideImgBtn');
+  if(hb) hb.textContent = hideImgs ? '🙈 显示图片' : '👁 隐藏图片';
   if(list.length === 0){ el.innerHTML = '<div class="loading">没有匹配的记录</div>'; return; }
   el.innerHTML = list.map(function(r, idx){
     var imgs = r.images || [];
@@ -677,12 +689,12 @@ function render(){
     var inner = '';
     if(batchMode){
       inner = '<div class="cardImgWrap">' +
-        (first ? '<img loading="lazy" src="'+first+'" alt="" onerror="retryImg(this)">' : noImgHtml) +
+        (first ? (hideImgs ? '<div class="noimg hideMode">📷 ' + imgs.length + ' 图</div>' : '<img loading="lazy" src="'+first+'" alt="" onerror="retryImg(this)">') : noImgHtml) +
         (imgs.length>1 ? '<span class="imgCount">'+imgs.length+' 图</span>' : '') + fav + pick +
       '</div>';
     } else if(first){
       inner = '<div class="cardImgWrap">' +
-        '<img loading="lazy" src="'+first+'" alt="" onerror="retryImg(this)">' +
+        (hideImgs ? '<div class="noimg hideMode">📷 ' + imgs.length + ' 图</div>' : '<img loading="lazy" src="'+first+'" alt="" onerror="retryImg(this)">') +
         (imgs.length>1 ? '<span class="imgCount">'+imgs.length+' 图</span>' : '') + fav + pick +
       '</div>' + actsRow +
       '<div class="cardBody"><div class="cardPrompt">'+esc((r.prompt_text||'').slice(0,180))+'</div>' +
