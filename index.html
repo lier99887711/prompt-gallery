@@ -125,6 +125,8 @@ header h1{font-size:18px;flex:1;white-space:nowrap}
 
 /* ===== 新增：收藏角标/选中框 ===== */
 .favBadge{position:absolute;left:8px;top:8px;color:#ffd54a;font-size:14px;background:rgba(0,0,0,.55);border-radius:999px;padding:2px 7px;z-index:3}
+.favQuick{position:absolute;left:8px;top:8px;color:#ffd54a;font-size:14px;background:rgba(0,0,0,.55);border-radius:999px;padding:2px 7px;z-index:3;border:none;cursor:pointer;line-height:1.4}
+.favQuick:not(.on){color:rgba(255,255,255,.9)}
 .pickBox{position:absolute;left:8px;top:8px;width:22px;height:22px;border-radius:6px;border:2px solid rgba(255,255,255,.8);background:rgba(0,0,0,.35);z-index:4;display:flex;align-items:center;justify-content:center;font-size:13px;color:#fff}
 .pickBox.on{background:var(--accent);border-color:var(--accent)}
 .card.picking .cardImgWrap::after{content:"";position:absolute;inset:0;background:rgba(0,0,0,.18)}
@@ -216,7 +218,7 @@ header h1{font-size:18px;flex:1;white-space:nowrap}
 <div id="mainView">
   <header>
     <div class="headerRow">
-      <h1>📚 提示词图库 <span id="verTag" style="font-size:11px;color:var(--sub);font-weight:normal;margin-left:6px">v24</span></h1>
+      <h1>📚 提示词图库 <span id="verTag" style="font-size:11px;color:var(--sub);font-weight:normal;margin-left:6px">v25</span></h1>
       <button class="miniBtn" onclick="toggleBatch()">批量</button>
       <button class="miniBtn" onclick="openRandom()">🎲 随机</button>
       <button class="miniBtn" onclick="openStats()">📊 统计</button>
@@ -321,7 +323,7 @@ header h1{font-size:18px;flex:1;white-space:nowrap}
 <!-- 编辑/新增弹窗 -->
 <div id="editMask">
   <div class="editBox">
-    <h2 id="editTitle" style="display:flex;justify-content:space-between;align-items:center">新增记录 <button type="button" id="editFavBtn" class="miniBtn" onclick="toggleFav()" style="display:none">☆ 收藏</button></h2>
+    <h2 style="display:flex;justify-content:space-between;align-items:center"><span id="editTitle">新增记录</span> <button type="button" id="editFavBtn" class="miniBtn" onclick="toggleFav()" style="display:none">☆ 收藏</button></h2>
     <div class="editField">
       <label>图片</label>
       <div class="editImgs" id="editImgs"></div>
@@ -676,7 +678,7 @@ function render(){
     var first = imgs.length ? (signedCache[imgs[0]] || '') : '';
     var tagsHtml = realTags(r).slice(0,4).map(function(t){ return '<span>'+esc(t)+'</span>'; }).join('');
     var d = (r.created_at||'').slice(0,10);
-    var fav = hasFav(r) ? '<span class="favBadge">★</span>' : '';
+    var fav = batchMode ? '' : '<button class="favQuick' + (hasFav(r) ? ' on' : '') + '" onclick="event.stopPropagation();quickFav(' + idx + ')">' + (hasFav(r) ? '★' : '☆') + '</button>';
     var pick = batchMode
       ? '<span class="pickBox' + (batchSet[r.id] ? ' on' : '') + '" onclick="event.stopPropagation();togglePick(\'' + r.id + '\')">' + (batchSet[r.id] ? '✓' : '') + '</span>'
       : '';
@@ -1080,6 +1082,12 @@ function doConfirm(){
 }
 
 /* ========== 收藏 ========== */
+function quickFav(idx){
+  var rec = filteredCache[idx];
+  if(!rec) return;
+  detail = rec;
+  toggleFav();
+}
 function toggleFav(){
   if(!detail) return;
   var rec = detail;
