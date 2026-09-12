@@ -221,7 +221,7 @@ header h1{font-size:18px;flex:1;white-space:nowrap}
 <div id="mainView">
   <header>
     <div class="headerRow">
-      <h1>📚 提示词图库 <span id="verTag" style="font-size:11px;color:var(--sub);font-weight:normal;margin-left:6px">v28</span></h1>
+      <h1>📚 提示词图库 <span id="verTag" style="font-size:11px;color:var(--sub);font-weight:normal;margin-left:6px">v29</span></h1>
       <button class="miniBtn" onclick="toggleBatch()">批量</button>
       <button class="miniBtn" onclick="openRandom()">🎲 随机</button>
       <button class="miniBtn" onclick="openStats()">📊 统计</button>
@@ -248,7 +248,7 @@ header h1{font-size:18px;flex:1;white-space:nowrap}
       <button class="tagChip" onclick="exportJson()">备份</button>
       <button class="tagChip" onclick="document.getElementById('importFile').click()">导入</button>
       <button class="tagChip" onclick="cleanNegativePrompts()" style="border-color:#c0392b;color:#c0392b">🧹 清理负面词</button>
-      <input type="file" id="importFile" accept=".json" style="display:none" onchange="importJson(this)">
+      <input type="file" id="importFile" accept=".json,.txt" style="display:none" onchange="importFileChange(this)">
       <input type="file" id="quickFileInput" accept="image/*" multiple style="display:none" onchange="quickFileChange(this)">
       <input type="file" id="quickCameraInput" accept="image/*" capture="environment" style="display:none" onchange="quickCameraChange(this)">
     </div>
@@ -1404,6 +1404,60 @@ function exportRecordsJson(list, msg){
   });
   downloadFile('提示词图库备份_' + today() + '.json', JSON.stringify(data, null, 2), 'application/json');
   toast(msg || '已导出 JSON');
+}
+function importFileChange(input){
+  var f = input.files && input.files[0];
+  var name = f ? (f.name || '').toLowerCase() : '';
+  if(name.indexOf('.txt') >= 0) importTxt(input);
+  else importJson(input);
+}
+function importTxt(input){
+  var f = input.files && input.files[0];
+  input.value = '';
+  if(!f){ return; }
+  var reader = new FileReader();
+  reader.onload = function(){
+    var text = String(reader.result || '');
+    var blocks = text.split('============================================================');
+    var items = [];
+    var cur = null;
+    blocks.forEach(function(b){
+      b = b.replace(/^\s+|\s+$/g, '');
+      if(!b) return;
+      var m = b.match(/^#\d+\s*\[标签:\s*([^\]]*)\]/);
+      if(m){
+        if(cur) items.push(cur);
+        var tag = m[1].trim();
+        cur = { prompt_text: '', tags: (tag && tag !== '无') ? [tag] : [] };
+      } else if(cur){
+        cur.prompt_text += (cur.prompt_text ? '\n' : '') + b;
+      }
+    });
+    if(cur) items.push(cur);
+    items = items.filter(function(it){ return it.prompt_text.trim(); });
+    if(!items.length){ toast('没有解析到记录'); return; }
+    var exist = {};
+    records.forEach(function(r){ exist[String(r.prompt_text||'').trim()] = 1; });
+    var todo = items.filter(function(it){ return !exist[it.prompt_text.trim()]; });
+    var dup = items.length - todo.length;
+    if(!todo.length){ toast('全部与现有记录重复，无需导入'); return; }
+    toast('导入 ' + todo.length + ' 条' + (dup ? '（跳过重复 ' + dup + ' 条）' : '') + '…');
+    var tasks = todo.map(function(it){
+      var payload = {
+        user_id: 'cb23b6c5-667a-4426-94f9-5a6c25505619',
+        prompt_text: it.prompt_text.trim(),
+        tags: it.tags,
+        variant_prompts: [],
+        images: []
+      };
+      return apiFetch('/rest/v1/prompts', { method: 'POST', token: getToken(), body: payload, prefer: 'return=representation', raw: true })
+        .then(function(r){ if(!r.ok){ return r.json().then(function(d){ throw new Error(d.message||'导入失败'); }); } return true; });
+    });
+    Promise.all(tasks).then(function(){
+      toast('导入完成：' + todo.length + ' 条'); loadAll();
+    })['catch'](function(e){ toast('导入失败：' + (e&&e.message?e.message:e)); });
+  };
+  reader.readAsText(f);
 }
 function importJson(input){
   var f = input.files && input.files[0];
