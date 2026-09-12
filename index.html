@@ -140,6 +140,9 @@ header h1{font-size:18px;flex:1;white-space:nowrap}
 /* ===== 新增：回收站 ===== */
 #trashView{display:none;padding:0 14px 100px}
 #trashView.show{display:block}
+.trashCard .cardBody{display:block !important}
+.trashFilter{display:flex;gap:8px;margin:4px 0 10px}
+.trashFilter .tagChip{flex:1;text-align:center}
 .trashHead{display:flex;align-items:center;gap:10px;padding:14px 0}
 .trashHead .miniBtn{flex-shrink:0}
 
@@ -218,7 +221,7 @@ header h1{font-size:18px;flex:1;white-space:nowrap}
 <div id="mainView">
   <header>
     <div class="headerRow">
-      <h1>📚 提示词图库 <span id="verTag" style="font-size:11px;color:var(--sub);font-weight:normal;margin-left:6px">v27</span></h1>
+      <h1>📚 提示词图库 <span id="verTag" style="font-size:11px;color:var(--sub);font-weight:normal;margin-left:6px">v28</span></h1>
       <button class="miniBtn" onclick="toggleBatch()">批量</button>
       <button class="miniBtn" onclick="openRandom()">🎲 随机</button>
       <button class="miniBtn" onclick="openStats()">📊 统计</button>
@@ -267,6 +270,11 @@ header h1{font-size:18px;flex:1;white-space:nowrap}
       <button class="miniBtn" onclick="showTrash(false)">← 返回图库</button>
       <span id="trashCount" style="color:var(--sub);font-size:12px"></span>
       <button class="miniBtn danger" onclick="emptyTrash()">清空回收站</button>
+    </div>
+    <div class="trashFilter">
+      <button class="tagChip on" id="tfAll" onclick="setTrashFilter('')">全部</button>
+      <button class="tagChip" id="tfHas" onclick="setTrashFilter('has')">有图</button>
+      <button class="tagChip" id="tfNone" onclick="setTrashFilter('none')">无图</button>
     </div>
     <div id="trashList"></div>
   </div>
@@ -435,6 +443,7 @@ var imgFilter = '';      // '' 全部 / has 有图 / none 无图 / fav 收藏
 var batchMode = false;   // 批量模式
 var batchSet = {};       // 批量勾选 {id:1}
 var trashMode = false;   // 回收站视图
+var trashFilter = '';    // 回收站内筛选：'' 全部 / has 有图 / none 无图
 var editingDirty = false;// 编辑未保存
 var confirmCb = null;    // 确认弹窗回调
 
@@ -1168,14 +1177,33 @@ function showTrash(on){
 function trashRecords(){
   return records.filter(isTrash);
 }
+function setTrashFilter(f){
+  trashFilter = f;
+  document.getElementById('tfAll').classList.toggle('on', f==='');
+  document.getElementById('tfHas').classList.toggle('on', f==='has');
+  document.getElementById('tfNone').classList.toggle('on', f==='none');
+  renderTrash();
+}
 function renderTrash(){
-  var list = trashRecords();
-  document.getElementById('trashCount').textContent = '回收站共 ' + list.length + ' 条';
+  var all = trashRecords();
+  var list = all.filter(function(r){
+    if(trashFilter === 'has') return (r.images||[]).length > 0;
+    if(trashFilter === 'none') return !(r.images||[]).length;
+    return true;
+  });
+  document.getElementById('trashCount').textContent = '回收站共 ' + all.length + ' 条' + (trashFilter ? '（' + list.length + ' 条匹配）' : '');
   var el = document.getElementById('trashList');
   if(!list.length){ el.innerHTML = '<div class="loading">回收站是空的</div>'; return; }
   el.innerHTML = list.map(function(r){
+    var imgs = r.images || [];
+    var first = imgs.length ? (signedCache[imgs[0]] || '') : '';
+    var imgHtml = imgs.length
+      ? (first ? '<img loading="lazy" src="'+first+'" alt="" onerror="retryImg(this)">' : '<div class="noimg">图</div>')
+      : '<div class="noimg">暂无图片</div>';
     var d = (r.created_at||'').slice(0,10);
-    return '<div class="card"><div class="cardBody">' +
+    return '<div class="card trashCard"><div class="cardImgWrap">' + imgHtml +
+      (imgs.length>1 ? '<span class="imgCount">'+imgs.length+' 图</span>' : '') +
+      '</div><div class="cardBody">' +
       '<div class="cardPrompt">'+esc((r.prompt_text||'').slice(0,120))+'</div>' +
       '<div class="cardFoot">' +
         '<button class="copyBtn" onclick="restoreTrash(\'' + r.id + '\')">↩ 恢复</button>' +
