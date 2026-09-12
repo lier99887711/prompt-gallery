@@ -218,7 +218,7 @@ header h1{font-size:18px;flex:1;white-space:nowrap}
 <div id="mainView">
   <header>
     <div class="headerRow">
-      <h1>📚 提示词图库 <span id="verTag" style="font-size:11px;color:var(--sub);font-weight:normal;margin-left:6px">v26</span></h1>
+      <h1>📚 提示词图库 <span id="verTag" style="font-size:11px;color:var(--sub);font-weight:normal;margin-left:6px">v27</span></h1>
       <button class="miniBtn" onclick="toggleBatch()">批量</button>
       <button class="miniBtn" onclick="openRandom()">🎲 随机</button>
       <button class="miniBtn" onclick="openStats()">📊 统计</button>
@@ -1155,6 +1155,7 @@ function doDelete(){
 
 /* ========== 回收站 ========== */
 function showTrash(on){
+  if(typeof on === 'undefined') on = true;   // 点击「回收站」按钮默认进入回收站
   trashMode = !!on;
   document.getElementById('list').style.display = on ? 'none' : '';
   document.getElementById('tagRow').style.display = on ? 'none' : '';
