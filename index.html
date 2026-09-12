@@ -218,7 +218,7 @@ header h1{font-size:18px;flex:1;white-space:nowrap}
 <div id="mainView">
   <header>
     <div class="headerRow">
-      <h1>📚 提示词图库 <span id="verTag" style="font-size:11px;color:var(--sub);font-weight:normal;margin-left:6px">v25</span></h1>
+      <h1>📚 提示词图库 <span id="verTag" style="font-size:11px;color:var(--sub);font-weight:normal;margin-left:6px">v26</span></h1>
       <button class="miniBtn" onclick="toggleBatch()">批量</button>
       <button class="miniBtn" onclick="openRandom()">🎲 随机</button>
       <button class="miniBtn" onclick="openStats()">📊 统计</button>
@@ -450,11 +450,24 @@ function getRefresh(){ try{ return localStorage.getItem('sb_refresh') || ''; }ca
 function setRefresh(t){ try{ localStorage.setItem('sb_refresh', t); }catch(e){} }
 function clearRefresh(){ try{ localStorage.removeItem('sb_refresh'); }catch(e){} }
 
-/* ---- 自动续期：用 refresh_token 换新 access_token ---- */
+function _tokenNearExpiry(){
+  var t = getToken();
+  if(!t) return false;
+  try{
+    var p = t.split('.')[1].replace(/-/g,'+').replace(/_/g,'/');
+    while(p.length % 4) p += '=';
+    var exp = JSON.parse(atob(p)).exp * 1000;
+    return (exp - Date.now()) < 5 * 60 * 1000;
+  }catch(e){ return false; }
+}
+
+/* ---- 自动续期：用 refresh_token 换新 access_token（单飞：并发请求共享一次刷新） ---- */
+var _refreshing = null;
 function refreshToken(){
   var rt = getRefresh();
   if(!rt) return Promise.resolve(false);
-  return fetch(SUPABASE_URL + '/auth/v1/token?grant_type=refresh_token', {
+  if(_refreshing) return _refreshing;
+  _refreshing = fetch(SUPABASE_URL + '/auth/v1/token?grant_type=refresh_token', {
     method: 'POST',
     headers: { 'apikey': ANON_KEY, 'Content-Type': 'application/json' },
     body: JSON.stringify({ refresh_token: rt })
@@ -466,7 +479,11 @@ function refreshToken(){
     }
     clearToken(); clearRefresh();
     return false;
-  }).catch(function(){ return false; });
+  })['catch'](function(){ return false; }).then(function(v){
+    _refreshing = null;
+    return v;
+  });
+  return _refreshing;
 }
 
 /* ---- API 封装（自动处理 JWT 过期 → 刷新令牌 → 重试） ---- */
@@ -544,6 +561,8 @@ function doLogout(){
 function showMain(){
   document.getElementById('loginView').classList.remove('active');
   document.getElementById('mainView').classList.add('active');
+  // token 快过期时提前刷新，避免保存中途失效
+  if(_tokenNearExpiry()) refreshToken();
   loadAll();
 }
 function showLogin(){
@@ -1064,7 +1083,14 @@ function saveRecord(){
     loadAll();
   })['catch'](function(e){
     btn.textContent = '保 存'; btn.disabled = false;
-    askConfirm('保存失败：' + (e && e.message ? e.message : e) + '\n\n请检查网络后重试', null, '知道了');
+    var msg = (e && e.message ? e.message : String(e || '未知错误'));
+    var hint = '';
+    if(msg.indexOf('JWT') >= 0 || msg.indexOf('expired') >= 0 || msg.indexOf('401') >= 0){
+      hint = '\n\n登录已过期：请先点右上角退出，再重新登录一次（输入 邮箱和密码 登录后即可继续保存）。';
+    }else{
+      hint = '\n\n请检查网络后重试。';
+    }
+    askConfirm('保存失败：' + msg + hint, null, '知道了');
   });
 }
 
