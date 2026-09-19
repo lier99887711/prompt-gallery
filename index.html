@@ -221,7 +221,7 @@ header h1{font-size:18px;flex:1;white-space:nowrap}
 <div id="mainView">
   <header>
     <div class="headerRow">
-      <h1>📚 提示词图库 <span id="verTag" style="font-size:11px;color:var(--sub);font-weight:normal;margin-left:6px">v30</span></h1>
+      <h1>📚 提示词图库 <span id="verTag" style="font-size:11px;color:var(--sub);font-weight:normal;margin-left:6px">v31</span></h1>
       <button class="miniBtn" onclick="toggleBatch()">批量</button>
       <button class="miniBtn" onclick="openRandom()">🎲 随机</button>
       <button class="miniBtn" onclick="openStats()">📊 统计</button>
@@ -583,14 +583,14 @@ function showLogin(){
 /* ---- 数据 ---- */
 function loadAll(){
   document.getElementById('list').innerHTML = '<div class="loading">加载中…</div>';
-  apiFetch('/rest/v1/prompts?select=*&order=created_at.desc', { token: getToken() }).then(function(data){
+  apiFetch('/rest/v1/prompts?select=*&order=created_at.desc&limit=10000', { token: getToken() }).then(function(data){
     if(data && data.code){
       // token 过期 → 自动刷新一次后重试
       var isExpired = String(data.code).indexOf('JWT') >= 0 || String(data.message||'').indexOf('expired') >= 0;
       if(isExpired){
         refreshToken().then(function(ok){
           if(ok){
-            apiFetch('/rest/v1/prompts?select=*&order=created_at.desc', { token: getToken() }).then(function(d2){
+            apiFetch('/rest/v1/prompts?select=*&order=created_at.desc&limit=10000', { token: getToken() }).then(function(d2){
               if(d2 && d2.code){ document.getElementById('list').innerHTML = '<div class="loading">加载失败：' + d2.message + '</div>'; return; }
               records = d2 || [];
               preSignImages();
