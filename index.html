@@ -1645,29 +1645,25 @@ function processQuickFiles(files, forcedRec){
   }
   if(!tasks.length){ toast('未识别图片格式，请换一张试试'); return; }
   var imgs = [];
-  toast('上传中…');
-  showLoading('图片上传中，请稍候…');
+  toast('图片上传中（后台进行，可继续操作）…');
   Promise.all(tasks).then(function(paths){
     imgs = (rec.images||[]).concat(paths);
     return apiFetch('/rest/v1/prompts?id=eq.' + encodeURIComponent(rec.id), {
       method: 'PATCH', token: getToken(), body: { images: imgs }, raw: true
     });
   }).then(function(r){
-    hideLoading();
     if(r && !r.ok){ return r.json().then(function(d){ throw new Error(d.message||'保存失败'); }); }
     toast('已上传并自动保存');
     if(imgFilter === 'none'){
       imgFilter = '';
-      document.getElementById('fNone').classList.remove('on');
-      document.getElementById('fAll').classList.add('on');
+      setImgFilter('');
       toast('上传成功，已切回「全部」');
     }
     rec.images = imgs;
     loadAll();
     closeEdit();
   })['catch'](function(e){
-    hideLoading();
-    askConfirm('上传失败：' + (e && e.message ? e.message : e) + '\n\n请检查网络后重试，或改用「修改 → 添加图片」方式上传', null, '知道了');
+    toast('上传失败：' + (e && e.message ? e.message : e) + '，可重试');
   });
 }
 function quickFileChange(input){
