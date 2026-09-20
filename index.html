@@ -1654,11 +1654,6 @@ function processQuickFiles(files, forcedRec){
   }).then(function(r){
     if(r && !r.ok){ return r.json().then(function(d){ throw new Error(d.message||'保存失败'); }); }
     toast('已上传并自动保存');
-    if(imgFilter === 'none'){
-      imgFilter = '';
-      setImgFilter('');
-      toast('上传成功，已切回「全部」');
-    }
     rec.images = imgs;
     loadAll();
     closeEdit();
