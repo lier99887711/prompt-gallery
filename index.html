@@ -583,32 +583,51 @@ function showLogin(){
 /* ---- 数据 ---- */
 function loadAll(){
   document.getElementById('list').innerHTML = '<div class="loading">加载中…</div>';
-  apiFetch('/rest/v1/prompts?select=*&order=created_at.desc&limit=10000', { token: getToken() }).then(function(data){
-    if(data && data.code){
-      // token 过期 → 自动刷新一次后重试
-      var isExpired = String(data.code).indexOf('JWT') >= 0 || String(data.message||'').indexOf('expired') >= 0;
-      if(isExpired){
-        refreshToken().then(function(ok){
-          if(ok){
-            apiFetch('/rest/v1/prompts?select=*&order=created_at.desc&limit=10000', { token: getToken() }).then(function(d2){
-              if(d2 && d2.code){ document.getElementById('list').innerHTML = '<div class="loading">加载失败：' + d2.message + '</div>'; return; }
-              records = d2 || [];
-              preSignImages();
-            });
-          }else{
-            document.getElementById('list').innerHTML = '<div class="loading">登录已过期，请重新登录</div>';
-            setTimeout(showLogin, 1200);
-          }
-        });
-        return;
+  var PAGE = 1000;
+  var start = 0;
+  var all = [];
+  function fetchPage(){
+    var end = start + PAGE - 1;
+    return fetch(SUPABASE_URL + '/rest/v1/prompts?select=*&order=created_at.desc', {
+      method: 'GET',
+      headers: {
+        'apikey': ANON_KEY,
+        'Authorization': 'Bearer ' + getToken(),
+        'Range': start + '-' + end,
+        'Prefer': 'count=exact'
       }
-      document.getElementById('list').innerHTML = '<div class="loading">加载失败：' + data.message + '</div>';
-      return;
-    }
+    }).then(function(r){
+      var cr = r.headers.get('content-range') || '';
+      var m = cr.match(/(\d+)-(\d+)\/(\d+)/);
+      var total = m ? parseInt(m[3]) : 0;
+      return r.json().then(function(data){
+        if(data && data.code){ throw new Error(data.message || '加载失败'); }
+        all = all.concat(data || []);
+        if(total > all.length){
+          start = end + 1;
+          document.getElementById('list').innerHTML = '<div class="loading">加载中… ' + all.length + '/' + total + '</div>';
+          return fetchPage();
+        }
+        return all;
+      });
+    });
+  }
+  fetchPage().then(function(data){
     records = data || [];
     preSignImages();
   }).catch(function(e){
-    document.getElementById('list').innerHTML = '<div class="loading">加载失败：' + (e.message||e) + '</div>';
+    var msg = (e && e.message) || e;
+    if(String(msg).indexOf('JWT') >= 0 || String(msg).indexOf('expired') >= 0){
+      refreshToken().then(function(ok){
+        if(ok){ loadAll(); }
+        else{
+          document.getElementById('list').innerHTML = '<div class="loading">登录已过期，请重新登录</div>';
+          setTimeout(showLogin, 1200);
+        }
+      });
+      return;
+    }
+    document.getElementById('list').innerHTML = '<div class="loading">加载失败：' + msg + '</div>';
   });
 }
 
