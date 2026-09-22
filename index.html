@@ -446,6 +446,19 @@ var trashMode = false;   // 回收站视图
 var trashFilter = '';    // 回收站内筛选：'' 全部 / has 有图 / none 无图
 var editingDirty = false;// 编辑未保存
 var confirmCb = null;    // 确认弹窗回调
+var allTotal = 0;        // 数据库记录总数
+var loadedCount = 0;     // 已拉取的记录数（从最新开始）
+var LOAD_BATCH = 50;     // 每次增量加载条数
+var loadingMore = false; // 正在加载更多
+
+/* 滚动到底自动加载更多 */
+window.addEventListener('scroll', function(){
+  if(trashMode) return;
+  if(loadedCount >= allTotal) return;
+  if((window.innerHeight + window.scrollY) >= document.body.scrollHeight - 600){
+    loadMore();
+  }
+});
 
 /* 内部标签：__fav 收藏 / __trash 回收站（不显示给用户） */
 function hasFav(r){ return (r.tags||[]).indexOf('__fav') >= 0; }
@@ -583,40 +596,49 @@ function showLogin(){
 /* ---- 数据 ---- */
 function loadAll(){
   document.getElementById('list').innerHTML = '<div class="loading">加载中…</div>';
-  var PAGE = 1000;
-  // 先探总数
+  loadedCount = 0;
+  var filteredNow = hasActiveFilter();
+  // 探总数
   fetch(SUPABASE_URL + '/rest/v1/prompts?select=id', {
     method: 'GET',
     headers: { 'apikey': ANON_KEY, 'Authorization': 'Bearer ' + getToken(), 'Range': '0-0', 'Prefer': 'count=exact' }
   }).then(function(r){
     var cr = r.headers.get('content-range') || '';
     var m = cr.match(/(\d+)-(\d+)\/(\d+)/);
-    var total = m ? parseInt(m[3]) : 0;
-    var pages = [];
-    for(var i=0; i<total; i+=PAGE){ pages.push(i); }
-    if(!pages.length) pages.push(0);
-    document.getElementById('list').innerHTML = '<div class="loading">加载中… 共 ' + total + ' 组</div>';
-    // 并行拉所有页
-    return Promise.all(pages.map(function(start){
-      var end = start + PAGE - 1;
-      return fetch(SUPABASE_URL + '/rest/v1/prompts?select=*&order=created_at.desc', {
-        method: 'GET',
-        headers: { 'apikey': ANON_KEY, 'Authorization': 'Bearer ' + getToken(), 'Range': start + '-' + end }
-      }).then(function(resp){
-        return resp.json().then(function(data){
-          if(data && data.code) throw new Error(data.message || '加载失败');
-          return data || [];
+    allTotal = m ? parseInt(m[3]) : 0;
+    if(filteredNow){
+      // 有筛选 → 全量并行拉，保证筛选/搜索正确
+      var pages = [];
+      for(var i=0; i<allTotal; i+=1000){ pages.push(i); }
+      if(!pages.length) pages.push(0);
+      return Promise.all(pages.map(function(start){
+        return fetch(SUPABASE_URL + '/rest/v1/prompts?select=*&order=created_at.desc', {
+          method: 'GET',
+          headers: { 'apikey': ANON_KEY, 'Authorization': 'Bearer ' + getToken(), 'Range': start + '-' + (start+999) }
+        }).then(function(resp){
+          return resp.json().then(function(d){ if(d&&d.code) throw new Error(d.message||'加载失败'); return d||[]; });
         });
+      })).then(function(parts){
+        var all = [];
+        parts.forEach(function(p){ all = all.concat(p); });
+        all.sort(function(a,b){ return (b.created_at||'').localeCompare(a.created_at||''); });
+        return all;
       });
-    })).then(function(parts){
-      var all = [];
-      parts.forEach(function(p){ all = all.concat(p); });
-      // 按 created_at 倒序合并
-      all.sort(function(a,b){ return (b.created_at||'').localeCompare(a.created_at||''); });
-      return all;
+    }
+    // 无筛选 → 只拉最新一批，秒开
+    var end = LOAD_BATCH - 1;
+    return fetch(SUPABASE_URL + '/rest/v1/prompts?select=*&order=created_at.desc', {
+      method: 'GET',
+      headers: { 'apikey': ANON_KEY, 'Authorization': 'Bearer ' + getToken(), 'Range': '0-' + end }
+    }).then(function(resp){
+      return resp.json().then(function(data){
+        if(data && data.code) throw new Error(data.message || '加载失败');
+        return data || [];
+      });
     });
   }).then(function(data){
     records = data || [];
+    loadedCount = records.length;
     preSignImages();
   }).catch(function(e){
     var msg = (e && e.message) || e;
@@ -631,6 +653,36 @@ function loadAll(){
       return;
     }
     document.getElementById('list').innerHTML = '<div class="loading">加载失败：' + msg + '</div>';
+  });
+}
+
+function hasActiveFilter(){
+  var kw = (document.getElementById('searchBar') ? document.getElementById('searchBar').value : '').trim();
+  return !!(currentTag || imgFilter || kw || document.getElementById('dateFrom').value || document.getElementById('dateTo').value);
+}
+
+/* 滚动到底加载下一批 */
+function loadMore(){
+  if(loadingMore || loadedCount >= allTotal) return;
+  loadingMore = true;
+  var start = loadedCount;
+  var end = Math.min(start + LOAD_BATCH - 1, allTotal - 1);
+  fetch(SUPABASE_URL + '/rest/v1/prompts?select=*&order=created_at.desc', {
+    method: 'GET',
+    headers: { 'apikey': ANON_KEY, 'Authorization': 'Bearer ' + getToken(), 'Range': start + '-' + end }
+  }).then(function(resp){
+    return resp.json().then(function(data){
+      if(data && data.code) throw new Error(data.message || '加载失败');
+      return data || [];
+    });
+  }).then(function(data){
+    records = records.concat(data || []);
+    loadedCount = records.length;
+    preSignImages();
+  }).catch(function(e){
+    toast('加载更多失败：' + ((e&&e.message)||e));
+  })['finally'](function(){
+    loadingMore = false;
   });
 }
 
@@ -706,6 +758,11 @@ function allTags(){
 
 function render(){
   if(trashMode) return;
+  // 有筛选但数据未拉全时，先全量加载再筛（保证搜索/筛选正确）
+  if(hasActiveFilter() && loadedCount < allTotal && loadedCount >= LOAD_BATCH){
+    loadAll();
+    return;
+  }
   // 标签行
   var tagRow = document.getElementById('tagRow');
   var tags = allTags();
@@ -718,12 +775,15 @@ function render(){
   var list = filtered();
   list.sort(function(a,b){ return ((hasFav(b)?1:0)-(hasFav(a)?1:0)); });
   filteredCache = list;
-  document.getElementById('count').textContent = '共 ' + list.length + ' 条记录';
+  document.getElementById('count').textContent = '共 ' + allTotal + ' 条记录';
   var el = document.getElementById('list');
   var hb = document.getElementById('hideImgBtn');
   if(hb) hb.textContent = hideImgs ? '🙈 显示图片' : '👁 隐藏图片';
-  if(list.length === 0){ el.innerHTML = '<div class="loading">没有匹配的记录</div>'; return; }
-  el.innerHTML = list.map(function(r, idx){
+  if(list.length === 0){
+    el.innerHTML = '<div class="loading">没有匹配的记录</div>';
+    return;
+  }
+  var html = list.map(function(r, idx){
     var imgs = r.images || [];
     var first = imgs.length ? (signedCache[imgs[0]] || '') : '';
     var tagsHtml = realTags(r).slice(0,4).map(function(t){ return '<span>'+esc(t)+'</span>'; }).join('');
@@ -758,6 +818,11 @@ function render(){
     }
     return '<div class="card' + (batchMode ? ' picking' : '') + '" onclick="' + cardClick + '">' + inner + '</div>';
   }).join('');
+  // 未加载完时追加"加载更多"占位
+  if(loadedCount < allTotal && !trashMode){
+    html += '<div class="loading" id="loadMoreTip">上滑加载更多（' + loadedCount + '/' + allTotal + '）…</div>';
+  }
+  el.innerHTML = html;
 }
 
 function copyTextByIdx(idx){
