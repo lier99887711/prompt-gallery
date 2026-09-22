@@ -584,35 +584,38 @@ function showLogin(){
 function loadAll(){
   document.getElementById('list').innerHTML = '<div class="loading">加载中…</div>';
   var PAGE = 1000;
-  var start = 0;
-  var all = [];
-  function fetchPage(){
-    var end = start + PAGE - 1;
-    return fetch(SUPABASE_URL + '/rest/v1/prompts?select=*&order=created_at.desc', {
-      method: 'GET',
-      headers: {
-        'apikey': ANON_KEY,
-        'Authorization': 'Bearer ' + getToken(),
-        'Range': start + '-' + end,
-        'Prefer': 'count=exact'
-      }
-    }).then(function(r){
-      var cr = r.headers.get('content-range') || '';
-      var m = cr.match(/(\d+)-(\d+)\/(\d+)/);
-      var total = m ? parseInt(m[3]) : 0;
-      return r.json().then(function(data){
-        if(data && data.code){ throw new Error(data.message || '加载失败'); }
-        all = all.concat(data || []);
-        if(total > all.length){
-          start = end + 1;
-          document.getElementById('list').innerHTML = '<div class="loading">加载中… ' + all.length + '/' + total + '</div>';
-          return fetchPage();
-        }
-        return all;
+  // 先探总数
+  fetch(SUPABASE_URL + '/rest/v1/prompts?select=id', {
+    method: 'GET',
+    headers: { 'apikey': ANON_KEY, 'Authorization': 'Bearer ' + getToken(), 'Range': '0-0', 'Prefer': 'count=exact' }
+  }).then(function(r){
+    var cr = r.headers.get('content-range') || '';
+    var m = cr.match(/(\d+)-(\d+)\/(\d+)/);
+    var total = m ? parseInt(m[3]) : 0;
+    var pages = [];
+    for(var i=0; i<total; i+=PAGE){ pages.push(i); }
+    if(!pages.length) pages.push(0);
+    document.getElementById('list').innerHTML = '<div class="loading">加载中… 共 ' + total + ' 组</div>';
+    // 并行拉所有页
+    return Promise.all(pages.map(function(start){
+      var end = start + PAGE - 1;
+      return fetch(SUPABASE_URL + '/rest/v1/prompts?select=*&order=created_at.desc', {
+        method: 'GET',
+        headers: { 'apikey': ANON_KEY, 'Authorization': 'Bearer ' + getToken(), 'Range': start + '-' + end }
+      }).then(function(resp){
+        return resp.json().then(function(data){
+          if(data && data.code) throw new Error(data.message || '加载失败');
+          return data || [];
+        });
       });
+    })).then(function(parts){
+      var all = [];
+      parts.forEach(function(p){ all = all.concat(p); });
+      // 按 created_at 倒序合并
+      all.sort(function(a,b){ return (b.created_at||'').localeCompare(a.created_at||''); });
+      return all;
     });
-  }
-  fetchPage().then(function(data){
+  }).then(function(data){
     records = data || [];
     preSignImages();
   }).catch(function(e){
