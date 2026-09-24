@@ -1328,7 +1328,7 @@ function renderTrash(){
     var imgs = r.images || [];
     var first = imgs.length ? (signedCache[imgs[0]] || '') : '';
     var imgHtml = imgs.length
-      ? (first ? '<img loading="lazy" src="'+first+'" alt="" onerror="retryImg(this)">' : '<div class="noimg">图</div>')
+      ? (first ? '<img loading="lazy" src="'+first+'" alt="" onclick="event.stopPropagation();zoomTrash(\'' + r.id + '\')" onerror="retryImg(this)">' : '<div class="noimg">图</div>')
       : '<div class="noimg">暂无图片</div>';
     var d = (r.created_at||'').slice(0,10);
     return '<div class="card trashCard"><div class="cardImgWrap">' + imgHtml +
@@ -1351,6 +1351,16 @@ function copyTrash(id){
     }
   }
   toast('未找到记录');
+}
+/* 回收站图片全屏放大 */
+function zoomTrash(id){
+  for(var i=0;i<records.length;i++){
+    if(records[i].id === id){
+      var imgs = (records[i].images||[]).map(function(p){ return signedCache[p]||''; }).filter(Boolean);
+      if(imgs.length){ zoomImgs = imgs; zoomIdx = 0; showZoom(0); }
+      return;
+    }
+  }
 }
 function restoreTrash(id){
   apiFetch('/rest/v1/prompts?id=eq.' + encodeURIComponent(id), {
