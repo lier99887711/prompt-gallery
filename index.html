@@ -140,6 +140,13 @@ header h1{font-size:18px;flex:1;white-space:nowrap}
 /* ===== 新增：回收站 ===== */
 #trashView{display:none;padding:0 14px 100px}
 #trashView.show{display:block}
+#trashList{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding:0 0 100px}
+@media(min-width:640px){#trashList{grid-template-columns:repeat(3,1fr);gap:12px}}
+@media(min-width:1024px){#trashList{grid-template-columns:repeat(4,1fr);gap:14px}}
+#trashList .trashCopy{position:absolute;top:8px;right:8px;background:rgba(0,0,0,.6);color:#fff;border:none;border-radius:999px;width:32px;height:32px;font-size:15px;cursor:pointer;z-index:2;line-height:1}
+#trashList .trashActs{position:absolute;left:0;right:0;bottom:0;display:flex;gap:6px;padding:6px;background:linear-gradient(transparent,rgba(0,0,0,.6));z-index:2}
+#trashList .trashActs .copyBtn{flex:1;font-size:11px;padding:7px 4px;border-radius:8px;background:rgba(255,255,255,.94);color:#333;border:none;cursor:pointer}
+#trashList .trashActs .copyBtn.danger{color:#ff6b6b}
 .trashCard .cardBody{display:block !important}
 .trashFilter{display:flex;gap:8px;margin:4px 0 10px}
 .trashFilter .tagChip{flex:1;text-align:center}
@@ -1303,14 +1310,24 @@ function renderTrash(){
     var d = (r.created_at||'').slice(0,10);
     return '<div class="card trashCard"><div class="cardImgWrap">' + imgHtml +
       (imgs.length>1 ? '<span class="imgCount">'+imgs.length+' 图</span>' : '') +
-      '</div><div class="cardBody">' +
+      '<button class="trashCopy" title="复制提示词" onclick="event.stopPropagation();copyTrash(\'' + r.id + '\')">📋</button>' +
+      '<div class="trashActs">' +
+        '<button class="copyBtn" onclick="event.stopPropagation();restoreTrash(\'' + r.id + '\')">↩ 恢复</button>' +
+        '<button class="copyBtn danger" onclick="event.stopPropagation();purgeTrash(\'' + r.id + '\')">永久删除</button>' +
+      '</div></div><div class="cardBody">' +
       '<div class="cardPrompt">'+esc((r.prompt_text||'').slice(0,120))+'</div>' +
-      '<div class="cardFoot">' +
-        '<button class="copyBtn" onclick="restoreTrash(\'' + r.id + '\')">↩ 恢复</button>' +
-        '<button class="copyBtn" style="color:#ff6b6b" onclick="purgeTrash(\'' + r.id + '\')">永久删除</button>' +
-        '<span class="cardDate">'+d+'</span>' +
-      '</div></div></div>';
+      '<div class="cardFoot"><span class="cardDate">'+d+'</span></div>' +
+      '</div></div>';
   }).join('');
+}
+function copyTrash(id){
+  for(var i=0;i<records.length;i++){
+    if(records[i].id === id){
+      copyText(records[i].prompt_text || '');
+      return;
+    }
+  }
+  toast('未找到记录');
 }
 function restoreTrash(id){
   apiFetch('/rest/v1/prompts?id=eq.' + encodeURIComponent(id), {
