@@ -1245,8 +1245,18 @@ function doDelete(){
     if(r && !r.ok) throw new Error('删除失败');
     closeEdit();
     toast('已移入回收站');
-    loadAll();
+    // 本地移除，不整页刷新，保持当前位置方便连续操作
+    removeRecordLocal(rec.id);
   })['catch'](function(e){ toast('删除失败：' + (e&&e.message?e.message:e)); });
+}
+
+/* 从当前列表本地移除一条记录，不重新拉取/不跳回顶部 */
+function removeRecordLocal(id){
+  var before = records.length;
+  records = records.filter(function(r){ return r.id !== id; });
+  if(records.length !== before && loadedCount > records.length) loadedCount = records.length;
+  if(detail && detail.id === id) closeDetail();
+  render();
 }
 
 /* ========== 回收站 ========== */
