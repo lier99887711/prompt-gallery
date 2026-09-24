@@ -602,10 +602,10 @@ function showLogin(){
 }
 
 /* ---- 数据 ---- */
-function loadAll(){
+function loadAll(forceFull, done){
   document.getElementById('list').innerHTML = '<div class="loading">加载中…</div>';
   loadedCount = 0;
-  var filteredNow = hasActiveFilter();
+  var filteredNow = hasActiveFilter() || forceFull;
   // 探总数
   fetch(SUPABASE_URL + '/rest/v1/prompts?select=id', {
     method: 'GET',
@@ -615,7 +615,7 @@ function loadAll(){
     var m = cr.match(/(\d+)-(\d+)\/(\d+)/);
     allTotal = m ? parseInt(m[3]) : 0;
     if(filteredNow){
-      // 有筛选 → 全量并行拉，保证筛选/搜索正确
+      // 有筛选/需全量 → 全量并行拉，保证筛选/搜索/回收站正确
       var pages = [];
       for(var i=0; i<allTotal; i+=1000){ pages.push(i); }
       if(!pages.length) pages.push(0);
@@ -648,11 +648,12 @@ function loadAll(){
     records = data || [];
     loadedCount = records.length;
     preSignImages();
+    if(done) done();
   }).catch(function(e){
     var msg = (e && e.message) || e;
     if(String(msg).indexOf('JWT') >= 0 || String(msg).indexOf('expired') >= 0){
       refreshToken().then(function(ok){
-        if(ok){ loadAll(); }
+        if(ok){ loadAll(forceFull, done); }
         else{
           document.getElementById('list').innerHTML = '<div class="loading">登录已过期，请重新登录</div>';
           setTimeout(showLogin, 1200);
@@ -1279,8 +1280,19 @@ function showTrash(on){
   document.getElementById('batchBar').classList.toggle('show', false);
   batchMode = false; batchSet = {};
   document.getElementById('trashView').classList.toggle('show', on);
-  if(on) renderTrash(); else render();
+  if(on){
+    // 进入回收站需全量数据（增量模式下可能没加载全），先拉全量再渲染
+    if(loadedCount < allTotal && !trashFullLoading){
+      trashFullLoading = true;
+      loadAll(true, function(){ trashFullLoading = false; renderTrash(); });
+    } else {
+      renderTrash();
+    }
+  } else {
+    render();
+  }
 }
+var trashFullLoading = false;
 function trashRecords(){
   return records.filter(isTrash);
 }
@@ -1334,7 +1346,9 @@ function restoreTrash(id){
     method: 'PATCH', token: getToken(), body: { tags: realTagsById(id) }, raw: true
   }).then(function(r){
     if(r && !r.ok) throw new Error('恢复失败');
-    toast('已恢复'); showTrash(true); loadAll();
+    // 本地更新记录、就地重绘回收站，不整页刷新
+    for(var i=0;i<records.length;i++) if(records[i].id === id) records[i].tags = realTags(records[i]);
+    toast('已恢复'); renderTrash();
   })['catch'](function(e){ toast('失败：' + (e&&e.message?e.message:e)); });
 }
 function realTagsById(id){
@@ -1351,7 +1365,10 @@ function purgeTrash(id){
     .then(function(){ return apiFetch('/rest/v1/prompts?id=eq.' + encodeURIComponent(id), { method: 'DELETE', token: getToken(), raw: true }); })
     .then(function(r){
       if(r && !r.ok) throw new Error('删除失败');
-      toast('已永久删除'); showTrash(true); loadAll();
+      // 本地移除、就地重绘回收站，不整页刷新
+      records = records.filter(function(x){ return x.id !== id; });
+      if(loadedCount > records.length) loadedCount = records.length;
+      toast('已永久删除'); renderTrash();
     })['catch'](function(e){ toast('失败：' + (e&&e.message?e.message:e)); });
   }, '永久删除');
 }
