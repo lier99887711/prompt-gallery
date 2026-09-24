@@ -450,6 +450,7 @@ var allTotal = 0;        // 数据库记录总数
 var loadedCount = 0;     // 已拉取的记录数（从最新开始）
 var LOAD_BATCH = 50;     // 每次增量加载条数
 var loadingMore = false; // 正在加载更多
+var skipLoadGuard = false; // 删除等局部操作时跳过"筛选自动全量刷新"
 
 /* 滚动到底自动加载更多 */
 window.addEventListener('scroll', function(){
@@ -758,8 +759,8 @@ function allTags(){
 
 function render(){
   if(trashMode) return;
-  // 有筛选但数据未拉全时，先全量加载再筛（保证搜索/筛选正确）
-  if(hasActiveFilter() && loadedCount < allTotal && loadedCount >= LOAD_BATCH){
+  // 有筛选但数据未拉全时，先全量加载再筛（保证搜索/筛选正确）；删除场景跳过避免跳顶
+  if(!skipLoadGuard && hasActiveFilter() && loadedCount < allTotal && loadedCount >= LOAD_BATCH){
     loadAll();
     return;
   }
@@ -1256,7 +1257,9 @@ function removeRecordLocal(id){
   records = records.filter(function(r){ return r.id !== id; });
   if(records.length !== before && loadedCount > records.length) loadedCount = records.length;
   if(detail && detail.id === id) closeDetail();
+  skipLoadGuard = true;   // 删除场景：禁止触发全量刷新，就地重绘保持位置
   render();
+  skipLoadGuard = false;
 }
 
 /* ========== 回收站 ========== */
