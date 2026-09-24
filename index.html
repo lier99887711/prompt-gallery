@@ -871,10 +871,21 @@ function copyText(text){
 }
 function fallbackCopy(text, ok){
   var ta = document.createElement('textarea');
-  ta.value = text; ta.style.position='fixed'; ta.style.opacity='0';
-  document.body.appendChild(ta); ta.select();
-  try{ document.execCommand('copy'); ok(); }catch(e){ toast('复制失败，请长按手动复制'); }
+  ta.value = text;
+  ta.setAttribute('readonly','');
+  ta.style.position='fixed';
+  ta.style.top='0'; ta.style.left='0';
+  ta.style.opacity='0';
+  document.body.appendChild(ta);
+  // 移动端必须 focus + select 后 execCommand 才可能成功
+  ta.focus();
+  ta.select();
+  try{ ta.setSelectionRange(0, text.length); }catch(e){}
+  var done = false;
+  try { done = document.execCommand('copy'); }catch(e){ done = false; }
   document.body.removeChild(ta);
+  if(done){ ok(); }
+  else{ toast('复制失败，请长按文字手动复制'); }
 }
 function toast(msg){
   var el = document.getElementById('toast');
