@@ -1333,7 +1333,7 @@ function renderTrash(){
     var d = (r.created_at||'').slice(0,10);
     return '<div class="card trashCard"><div class="cardImgWrap">' + imgHtml +
       (imgs.length>1 ? '<span class="imgCount">'+imgs.length+' 图</span>' : '') +
-      '<button class="trashCopy" title="复制提示词" onclick="event.stopPropagation();copyTrash(\'' + r.id + '\')">📋</button>' +
+      '<button class="trashCopy" title="复制提示词" onclick="event.stopPropagation();copyText(\'' + esc2(r.prompt_text || '') + '\')">📋</button>' +
       '<div class="trashActs">' +
         '<button class="copyBtn" onclick="event.stopPropagation();restoreTrash(\'' + r.id + '\')">↩ 恢复</button>' +
         '<button class="copyBtn danger" onclick="event.stopPropagation();purgeTrash(\'' + r.id + '\')">永久删除</button>' +
