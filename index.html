@@ -461,10 +461,9 @@ var skipLoadGuard = false; // 删除等局部操作时跳过"筛选自动全量�
 
 /* 滚动到底自动加载更多 */
 window.addEventListener('scroll', function(){
-  if(trashMode) return;
-  if(loadedCount >= allTotal) return;
   if((window.innerHeight + window.scrollY) >= document.body.scrollHeight - 600){
-    loadMore();
+    if(trashMode){ trashLoadMore(); }
+    else if(loadedCount < allTotal){ loadMore(); }
   }
 });
 
@@ -1292,6 +1291,7 @@ function showTrash(on){
   batchMode = false; batchSet = {};
   document.getElementById('trashView').classList.toggle('show', on);
   if(on){
+    trashShown = 60;
     // 进入回收站需全量数据（增量模式下可能没加载全），先拉全量再渲染
     if(loadedCount < allTotal && !trashFullLoading){
       trashFullLoading = true;
@@ -1304,6 +1304,7 @@ function showTrash(on){
   }
 }
 var trashFullLoading = false;
+var trashShown = 60;   // 回收站每批渲染条数（滚动到底追加）
 function trashRecords(){
   return records.filter(isTrash);
 }
@@ -1312,6 +1313,7 @@ function setTrashFilter(f){
   document.getElementById('tfAll').classList.toggle('on', f==='');
   document.getElementById('tfHas').classList.toggle('on', f==='has');
   document.getElementById('tfNone').classList.toggle('on', f==='none');
+  trashShown = 60;
   renderTrash();
 }
 function renderTrash(){
@@ -1324,7 +1326,9 @@ function renderTrash(){
   document.getElementById('trashCount').textContent = '回收站共 ' + all.length + ' 条' + (trashFilter ? '（' + list.length + ' 条匹配）' : '');
   var el = document.getElementById('trashList');
   if(!list.length){ el.innerHTML = '<div class="loading">回收站是空的</div>'; return; }
-  el.innerHTML = list.map(function(r){
+  // 分批渲染，避免一次性渲染上千卡片卡死
+  var shown = list.slice(0, trashShown);
+  el.innerHTML = shown.map(function(r){
     var imgs = r.images || [];
     var first = imgs.length ? (signedCache[imgs[0]] || '') : '';
     var imgHtml = imgs.length
@@ -1342,6 +1346,17 @@ function renderTrash(){
       '<div class="cardFoot"><span class="cardDate">'+d+'</span></div>' +
       '</div></div>';
   }).join('');
+  // 未显示完时追加"加载更多"占位
+  if(list.length > trashShown){
+    el.insertAdjacentHTML('beforeend', '<div class="loading">上滑加载更多（' + trashShown + '/' + list.length + '）…</div>');
+  }
+}
+/* 回收站滚动到底加载下一批 */
+function trashLoadMore(){
+  if(trashMode){
+    trashShown += 60;
+    renderTrash();
+  }
 }
 function copyTrash(id){
   for(var i=0;i<records.length;i++){
