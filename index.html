@@ -165,6 +165,8 @@ header h1{font-size:18px;flex:1;white-space:nowrap}
 /* 编辑弹窗 */
 #editMask{display:none;position:fixed;inset:0;background:rgba(0,0,0,.78);z-index:150;overflow-y:auto}
 #editMask.open{display:block}
+#editMask.drag-over .editBox{box-shadow:0 0 0 3px var(--accent);border-color:var(--accent)}
+#editMask.drag-over::after{content:"松开即可添加图片";position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);background:var(--accent);color:#fff;padding:12px 26px;border-radius:999px;font-size:15px;pointer-events:none;z-index:160;box-shadow:0 6px 20px rgba(0,0,0,.4)}
 .editBox{max-width:640px;margin:20px auto;background:var(--card);border:1px solid var(--line);border-radius:18px;padding:22px}
 .editBox h2{font-size:18px;margin-bottom:16px}
 .editField{margin-bottom:16px}
@@ -221,7 +223,7 @@ header h1{font-size:18px;flex:1;white-space:nowrap}
 <div id="mainView">
   <header>
     <div class="headerRow">
-      <h1>📚 提示词图库 <span id="verTag" style="font-size:11px;color:var(--sub);font-weight:normal;margin-left:6px">v34</span></h1>
+      <h1>📚 提示词图库 <span id="verTag" style="font-size:11px;color:var(--sub);font-weight:normal;margin-left:6px">v35</span></h1>
       <button class="miniBtn" onclick="toggleBatch()">批量</button>
       <button class="miniBtn" onclick="openRandom()">🎲 随机</button>
       <button class="miniBtn" onclick="openStats()">📊 统计</button>
@@ -1005,6 +1007,48 @@ function editFileChange(input){
   if(added === 0){ toast('未识别图片格式，请换一张试试'); return; }
   renderEditImgs();
 }
+
+/* 拖拽上传（桌面端）：把图片直接拖进编辑窗口即添加，点保存后上传 */
+(function(){
+  var mask = document.getElementById('editMask');
+  var dragDepth = 0;
+  mask.addEventListener('dragenter', function(e){
+    if(!editing) return;
+    var hasFiles = e.dataTransfer && e.dataTransfer.types && Array.prototype.indexOf.call(e.dataTransfer.types, 'Files') >= 0;
+    if(!hasFiles) return;
+    e.preventDefault();
+    dragDepth++;
+    mask.classList.add('drag-over');
+  });
+  mask.addEventListener('dragover', function(e){
+    if(!editing) return;
+    e.preventDefault();
+  });
+  mask.addEventListener('dragleave', function(e){
+    if(!editing) return;
+    e.preventDefault();
+    dragDepth--;
+    if(dragDepth <= 0){ dragDepth = 0; mask.classList.remove('drag-over'); }
+  });
+  mask.addEventListener('drop', function(e){
+    if(!editing) return;
+    e.preventDefault();
+    dragDepth = 0;
+    mask.classList.remove('drag-over');
+    var files = Array.prototype.slice.call((e.dataTransfer && e.dataTransfer.files) || []);
+    if(!files.length){ toast('未检测到文件，请拖入图片'); return; }
+    var added = 0;
+    for(var i=0; i<files.length; i++){
+      var f = files[i];
+      if(f.type && f.type.indexOf('image/') !== 0) continue;
+      editing.newFiles.push({ file: f, path: '', preview: URL.createObjectURL(f) });
+      added++;
+    }
+    if(added === 0){ toast('未识别图片格式，请拖入图片文件'); return; }
+    renderEditImgs();
+    toast('已添加 ' + added + ' 张图片，点保存后上传');
+  });
+})();
 
 /* 图片压缩（上传前自动压缩，大幅减小体积、提升上传速度） */
 function compressImage(file, maxSide, quality){
