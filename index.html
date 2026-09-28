@@ -223,7 +223,7 @@ header h1{font-size:18px;flex:1;white-space:nowrap}
 <div id="mainView">
   <header>
     <div class="headerRow">
-      <h1>📚 提示词图库 <span id="verTag" style="font-size:11px;color:var(--sub);font-weight:normal;margin-left:6px">v35</span></h1>
+      <h1>📚 提示词图库 <span id="verTag" style="font-size:11px;color:var(--sub);font-weight:normal;margin-left:6px">v36</span></h1>
       <button class="miniBtn" onclick="toggleBatch()">批量</button>
       <button class="miniBtn" onclick="openRandom()">🎲 随机</button>
       <button class="miniBtn" onclick="openStats()">📊 统计</button>
@@ -337,8 +337,12 @@ header h1{font-size:18px;flex:1;white-space:nowrap}
     <div class="editField">
       <label>图片</label>
       <div class="editImgs" id="editImgs"></div>
+      <div style="display:flex;gap:8px;margin-top:10px">
+        <input type="text" id="editImgUrl" placeholder="粘贴图片链接（http/https），回车添加" style="flex:1;min-width:0;padding:9px 12px;border:1px solid var(--line);border-radius:8px;font-size:14px;background:var(--bg);color:var(--text)" onkeydown="if(event.key==='Enter'){event.preventDefault();addImgByUrl()}">
+        <button type="button" class="pasteBtn" onclick="addImgByUrl()" style="white-space:nowrap">＋ 添加</button>
+      </div>
       <input type="file" id="editFileInput" accept="image/*" multiple style="display:none" onchange="editFileChange(this)">
-      <div class="tip" style="margin-top:8px">原图直传，不压缩</div>
+      <div class="tip" style="margin-top:8px">原图直传，不压缩；也可拖拽图片或粘贴图片链接</div>
     </div>
     <div class="editField">
       <div class="editLabelRow"><label>提示词</label><button type="button" class="pasteBtn" onclick="pasteClipboard()">📋 粘贴剪贴板</button></div>
@@ -393,6 +397,39 @@ var ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJ
 
 /* ========== Cloudflare R2（图片存储） ========== */
 var R2_BASE = 'https://pub-cbc63f447e104a6db15178814dca21eb.r2.dev';            // r2.dev 公开域名（读图直链）
+/* 图片地址解析：外部 http(s) 链接直接引用，R2 路径拼公开域名 */
+function imgUrl(p){
+  if(!p) return '';
+  if(/^https?:\/\//i.test(p)) return p;
+  return signedCache[p] || (R2_BASE + '/' + p);
+}
+/* 粘贴图片链接 → 尝试抓取后上传 R2；跨域/防盗链失败则按外部链接直接引用 */
+function addImgByUrl(){
+  if(!editing) return;
+  var input = document.getElementById('editImgUrl');
+  var url = (input.value || '').trim();
+  if(!url){ toast('请粘贴图片链接'); return; }
+  if(!/^https?:\/\//i.test(url)){ toast('请输入 http/https 开头的链接'); return; }
+  input.value = '';
+  toast('正在获取图片…');
+  fetch(url).then(function(r){
+    if(!r.ok) throw new Error('HTTP ' + r.status);
+    return r.blob();
+  }).then(function(blob){
+    if(!blob || (blob.type && blob.type.indexOf('image/') !== 0)) throw new Error('not image');
+    var ext = (url.split('?')[0].split('.').pop() || 'jpg').toLowerCase();
+    if(ext.length > 5 || ['html','php','aspx','jsp','do','action'].indexOf(ext) >= 0) ext = 'jpg';
+    var f = new File([blob], 'paste-' + Date.now() + '.' + ext, { type: blob.type || 'image/jpeg' });
+    editing.newFiles.push({ file: f, path: '', preview: URL.createObjectURL(f) });
+    renderEditImgs();
+    toast('已获取图片，点保存后上传');
+  })['catch'](function(){
+    if(!editing) return;
+    editing.keepImages.push(url);
+    renderEditImgs();
+    toast('该链接无法直接下载（可能防盗链），已按外部链接添加');
+  });
+}
 var R2_ENDPOINT = 'https://410375531f1a5808739b4b9bec773354.r2.cloudflarestorage.com'; // S3 API 端点（上传/删除）
 var R2_BUCKET = 'llllllllmmm';
 var R2_AK = 'c0bf6363e6d65ced70d25a351d8a2279';
@@ -624,6 +661,7 @@ function preSignImages(){
     });
   });
   paths.forEach(function(p){
+    if(/^https?:\/\//i.test(p)) return;   // 外部链接不拼 R2 域名
     signedCache[p] = R2_BASE + '/' + p;
   });
   render();
@@ -705,7 +743,7 @@ function render(){
   if(list.length === 0){ el.innerHTML = '<div class="loading">没有匹配的记录</div>'; return; }
   el.innerHTML = list.map(function(r, idx){
     var imgs = r.images || [];
-    var first = imgs.length ? (signedCache[imgs[0]] || '') : '';
+    var first = imgs.length ? imgUrl(imgs[0]) : '';
     var tagsHtml = realTags(r).slice(0,4).map(function(t){ return '<span>'+esc(t)+'</span>'; }).join('');
     var d = (r.created_at||'').slice(0,10);
     var fav = batchMode ? '' : '<button class="favQuick' + (hasFav(r) ? ' on' : '') + '" onclick="event.stopPropagation();quickFav(' + idx + ')">' + (hasFav(r) ? '★' : '☆') + '</button>';
@@ -802,7 +840,7 @@ function openDetail(idx){
   detail = rec;
   var imgs = rec.images || [];
   document.getElementById('detailImgs').innerHTML = imgs.map(function(p, i){
-    var url = signedCache[p] || '';
+    var url = imgUrl(p);
     return url ? '<img src="'+url+'" onclick="zoomAt('+i+')" alt="">' : '';
   }).join('') || '<div class="noimg" style="color:var(--sub);text-align:center;padding:20px">暂无图片</div>';
   document.getElementById('detailPrompt').textContent = rec.prompt_text || '';
@@ -837,7 +875,7 @@ function zoomAt(i){
   if(detail) zoomImgsOf(detail, i);
 }
 function zoomImgsOf(rec, i){
-  var imgs = (rec.images||[]).map(function(p){ return signedCache[p]||''; }).filter(Boolean);
+  var imgs = (rec.images||[]).map(function(p){ return imgUrl(p); }).filter(Boolean);
   if(!imgs.length) return;
   zoomImgs = imgs;
   zoomIdx = Math.min(i||0, imgs.length-1);
@@ -968,7 +1006,7 @@ function renderEditImgs(){
   var el = document.getElementById('editImgs');
   var html = '';
   editing.keepImages.forEach(function(p){
-    var url = signedCache[p] || '';
+    var url = imgUrl(p);
     var imgHtml = url ? '<img src="'+url+'">' : '<div class="noimg" style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--sub);font-size:11px">图</div>';
     html += '<div class="editImg">'+imgHtml+'<button class="x" onclick="removeImg(\''+esc2(p)+'\')">✕</button></div>';
   });
@@ -1282,7 +1320,7 @@ function renderTrash(){
   if(!list.length){ el.innerHTML = '<div class="loading">回收站是空的</div>'; return; }
   el.innerHTML = list.map(function(r){
     var imgs = r.images || [];
-    var first = imgs.length ? (signedCache[imgs[0]] || '') : '';
+    var first = imgs.length ? imgUrl(imgs[0]) : '';
     var imgHtml = imgs.length
       ? (first ? '<img loading="lazy" src="'+first+'" alt="" onerror="retryImg(this)">' : '<div class="noimg">图</div>')
       : '<div class="noimg">暂无图片</div>';
@@ -1593,7 +1631,7 @@ function saveAllImages(list){
   function next(){
     if(i >= paths.length){ toast('已保存 ' + paths.length + ' 张图片'); return; }
     var p = paths[i++];
-    var url = signedCache[p];
+    var url = imgUrl(p);
     if(!url){ next(); return; }
     fetch(url).then(function(r){ if(!r.ok) throw new Error('load fail'); return r.blob(); })
     .then(function(blob){
