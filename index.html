@@ -221,7 +221,7 @@ header h1{font-size:18px;flex:1;white-space:nowrap}
 <div id="mainView">
   <header>
     <div class="headerRow">
-      <h1>📚 提示词图库 <span id="verTag" style="font-size:11px;color:var(--sub);font-weight:normal;margin-left:6px">v33</span></h1>
+      <h1>📚 提示词图库 <span id="verTag" style="font-size:11px;color:var(--sub);font-weight:normal;margin-left:6px">v34</span></h1>
       <button class="miniBtn" onclick="toggleBatch()">批量</button>
       <button class="miniBtn" onclick="openRandom()">🎲 随机</button>
       <button class="miniBtn" onclick="openStats()">📊 统计</button>
@@ -1034,27 +1034,50 @@ function compressImage(file, maxSide, quality){
   });
 }
 
-/* storage 上传（直传 Cloudflare R2，SigV4；原图直传 + 失败重试1次） */
+/* storage 上传（直传 Cloudflare R2，SigV4；原图直传 + 失败一直重试直到成功） */
 function uploadToStorage(path, file){
   return new Promise(function(resolve, reject){
     var reader = new FileReader();
     reader.onload = function(){
       var bytes = new Uint8Array(reader.result);
-      function attempt(left){
+      var retryDelay = 500;
+      function attempt(){
         r2Request('PUT', path, bytes).then(function(resp){
           if(resp.ok){ resolve({ ok: true }); }
-          else if(left > 0){ setTimeout(function(){ attempt(left - 1); }, 400); }
-          else { return resp.text().then(function(t){ reject(new Error('HTTP '+resp.status+' '+(t||'').slice(0,80))); }); }
+          else if(resp.status === 401 || resp.status === 403){
+            // 签名/权限错误：重试无意义，直接报错
+            return resp.text().then(function(t){ reject(new Error('HTTP '+resp.status+' '+(t||'').slice(0,80))); });
+          }
+          else {
+            retryDelay = Math.min(retryDelay * 2, 5000);
+            setTimeout(attempt, retryDelay);
+          }
         })['catch'](function(e){
-          if(left > 0){ setTimeout(function(){ attempt(left - 1); }, 400); }
-          else { reject(e); }
+          retryDelay = Math.min(retryDelay * 2, 5000);
+          setTimeout(attempt, retryDelay);
         });
       }
-      attempt(1);
+      attempt();
     };
     reader.onerror = function(){ reject(new Error('读取文件失败')); };
     reader.readAsArrayBuffer(file);
   });
+}
+/* 保存类请求失败重试（退避递增；登录过期不重试，其余一直重试直到成功） */
+function withRetry(fn){
+  var retryDelay = 800;
+  function go(){
+    return Promise.resolve().then(fn)['catch'](function(e){
+      var msg = (e && e.message ? e.message : String(e || ''));
+      if(msg.indexOf('JWT') >= 0 || msg.indexOf('expired') >= 0 || msg.indexOf('401') >= 0){
+        toast('保存失败：登录已过期，请退出后重新登录');
+        throw e;
+      }
+      retryDelay = Math.min(retryDelay * 2, 5000);
+      return new Promise(function(res){ setTimeout(res, retryDelay); }).then(go);
+    });
+  }
+  return go();
 }
 function deleteFromStorage(path){
   // 直删 R2 对象
@@ -1101,30 +1124,25 @@ function saveRecord(){
       variant_prompts: variants,
       images: images
     };
-    if(!isNew){
-      return apiFetch('/rest/v1/prompts?id=eq.' + encodeURIComponent(rid), {
-        method: 'PATCH', token: getToken(), body: payload, raw: true
-      }).then(function(r){ if(!r.ok){ return r.json().then(function(d){ throw new Error(d.message||'保存失败'); }); } return {new:false, id: rid}; });
-    }else{
-      payload.user_id = 'cb23b6c5-667a-4426-94f9-5a6c25505619';
-      return apiFetch('/rest/v1/prompts', {
-        method: 'POST', token: getToken(), body: payload, prefer: 'return=representation', raw: true
-      }).then(function(r){
-        if(!r.ok){ return r.json().then(function(d){ throw new Error(d.message||'保存失败'); }); }
-        return r.json()['catch'](function(){ return []; }).then(function(d){ return {new:true, id: d && d.length ? d[0].id : rid}; });
-      });
-    }
+    return withRetry(function(){
+      if(!isNew){
+        return apiFetch('/rest/v1/prompts?id=eq.' + encodeURIComponent(rid), {
+          method: 'PATCH', token: getToken(), body: payload, raw: true
+        }).then(function(r){ if(!r.ok){ return r.json().then(function(d){ throw new Error(d.message||'保存失败'); }); } return {new:false, id: rid}; });
+      }else{
+        payload.user_id = 'cb23b6c5-667a-4426-94f9-5a6c25505619';
+        return apiFetch('/rest/v1/prompts', {
+          method: 'POST', token: getToken(), body: payload, prefer: 'return=representation', raw: true
+        }).then(function(r){
+          if(!r.ok){ return r.json().then(function(d){ throw new Error(d.message||'保存失败'); }); }
+          return r.json()['catch'](function(){ return []; }).then(function(d){ return {new:true, id: d && d.length ? d[0].id : rid}; });
+        });
+      }
+    });
   }).then(function(){
     toast('已保存');
     loadAll();
-  })['catch'](function(e){
-    var msg = (e && e.message ? e.message : String(e || '未知错误'));
-    if(msg.indexOf('JWT') >= 0 || msg.indexOf('expired') >= 0 || msg.indexOf('401') >= 0){
-      toast('保存失败：登录已过期，请退出后重新登录');
-    }else{
-      toast('保存失败：' + msg + '（重新编辑保存即可）');
-    }
-  });
+  })['catch'](function(){ /* 登录过期等已由 withRetry 提示 */ });
 }
 
 /* ========== 确认弹窗（通用） ========== */
@@ -1672,11 +1690,15 @@ function processQuickFiles(files, forcedRec){
   toast('上传中，完成后自动保存…');
   Promise.all(tasks).then(function(paths){
     imgs = (rec.images||[]).concat(paths);
-    return apiFetch('/rest/v1/prompts?id=eq.' + encodeURIComponent(rec.id), {
-      method: 'PATCH', token: getToken(), body: { images: imgs }, raw: true
+    return withRetry(function(){
+      return apiFetch('/rest/v1/prompts?id=eq.' + encodeURIComponent(rec.id), {
+        method: 'PATCH', token: getToken(), body: { images: imgs }, raw: true
+      }).then(function(r){
+        if(r && !r.ok){ return r.json().then(function(d){ throw new Error(d.message||'保存失败'); }); }
+        return true;
+      });
     });
-  }).then(function(r){
-    if(r && !r.ok){ return r.json().then(function(d){ throw new Error(d.message||'保存失败'); }); }
+  }).then(function(){
     toast('已上传并自动保存');
     if(imgFilter === 'none'){
       imgFilter = '';
