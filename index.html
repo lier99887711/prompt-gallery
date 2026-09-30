@@ -140,6 +140,13 @@ header h1{font-size:18px;flex:1;white-space:nowrap}
 /* ===== 新增：回收站 ===== */
 #trashView{display:none;padding:0 14px 100px}
 #trashView.show{display:block}
+#trashList{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding:0 0 100px}
+@media(min-width:640px){#trashList{grid-template-columns:repeat(3,1fr);gap:12px}}
+@media(min-width:1024px){#trashList{grid-template-columns:repeat(4,1fr);gap:14px}}
+#trashList .trashCopy{position:absolute;top:8px;right:8px;background:rgba(0,0,0,.6);color:#fff;border:none;border-radius:999px;width:32px;height:32px;font-size:15px;cursor:pointer;z-index:2;line-height:1}
+#trashList .trashActs{position:absolute;left:0;right:0;bottom:0;display:flex;gap:6px;padding:6px;background:linear-gradient(transparent,rgba(0,0,0,.6));z-index:2}
+#trashList .trashActs .copyBtn{flex:1;font-size:11px;padding:7px 4px;border-radius:8px;background:rgba(255,255,255,.94);color:#333;border:none;cursor:pointer}
+#trashList .trashActs .copyBtn.danger{color:#ff6b6b}
 .trashCard .cardBody{display:block !important}
 .trashFilter{display:flex;gap:8px;margin:4px 0 10px}
 .trashFilter .tagChip{flex:1;text-align:center}
@@ -165,8 +172,6 @@ header h1{font-size:18px;flex:1;white-space:nowrap}
 /* 编辑弹窗 */
 #editMask{display:none;position:fixed;inset:0;background:rgba(0,0,0,.78);z-index:150;overflow-y:auto}
 #editMask.open{display:block}
-#editMask.drag-over .editBox{box-shadow:0 0 0 3px var(--accent);border-color:var(--accent)}
-#editMask.drag-over::after{content:"松开即可添加图片";position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);background:var(--accent);color:#fff;padding:12px 26px;border-radius:999px;font-size:15px;pointer-events:none;z-index:160;box-shadow:0 6px 20px rgba(0,0,0,.4)}
 .editBox{max-width:640px;margin:20px auto;background:var(--card);border:1px solid var(--line);border-radius:18px;padding:22px}
 .editBox h2{font-size:18px;margin-bottom:16px}
 .editField{margin-bottom:16px}
@@ -223,7 +228,7 @@ header h1{font-size:18px;flex:1;white-space:nowrap}
 <div id="mainView">
   <header>
     <div class="headerRow">
-      <h1>📚 提示词图库 <span id="verTag" style="font-size:11px;color:var(--sub);font-weight:normal;margin-left:6px">v36</span></h1>
+      <h1>📚 提示词图库 <span id="verTag" style="font-size:11px;color:var(--sub);font-weight:normal;margin-left:6px">v31</span></h1>
       <button class="miniBtn" onclick="toggleBatch()">批量</button>
       <button class="miniBtn" onclick="openRandom()">🎲 随机</button>
       <button class="miniBtn" onclick="openStats()">📊 统计</button>
@@ -337,12 +342,8 @@ header h1{font-size:18px;flex:1;white-space:nowrap}
     <div class="editField">
       <label>图片</label>
       <div class="editImgs" id="editImgs"></div>
-      <div style="display:flex;gap:8px;margin-top:10px">
-        <input type="text" id="editImgUrl" placeholder="粘贴图片链接（http/https），回车添加" style="flex:1;min-width:0;padding:9px 12px;border:1px solid var(--line);border-radius:8px;font-size:14px;background:var(--bg);color:var(--text)" onkeydown="if(event.key==='Enter'){event.preventDefault();addImgByUrl()}">
-        <button type="button" class="pasteBtn" onclick="addImgByUrl()" style="white-space:nowrap">＋ 添加</button>
-      </div>
       <input type="file" id="editFileInput" accept="image/*" multiple style="display:none" onchange="editFileChange(this)">
-      <div class="tip" style="margin-top:8px">原图直传，不压缩；也可拖拽图片或粘贴图片链接</div>
+      <div class="tip" style="margin-top:8px">原图直传，不压缩</div>
     </div>
     <div class="editField">
       <div class="editLabelRow"><label>提示词</label><button type="button" class="pasteBtn" onclick="pasteClipboard()">📋 粘贴剪贴板</button></div>
@@ -397,39 +398,6 @@ var ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJ
 
 /* ========== Cloudflare R2（图片存储） ========== */
 var R2_BASE = 'https://pub-cbc63f447e104a6db15178814dca21eb.r2.dev';            // r2.dev 公开域名（读图直链）
-/* 图片地址解析：外部 http(s) 链接直接引用，R2 路径拼公开域名 */
-function imgUrl(p){
-  if(!p) return '';
-  if(/^https?:\/\//i.test(p)) return p;
-  return signedCache[p] || (R2_BASE + '/' + p);
-}
-/* 粘贴图片链接 → 尝试抓取后上传 R2；跨域/防盗链失败则按外部链接直接引用 */
-function addImgByUrl(){
-  if(!editing) return;
-  var input = document.getElementById('editImgUrl');
-  var url = (input.value || '').trim();
-  if(!url){ toast('请粘贴图片链接'); return; }
-  if(!/^https?:\/\//i.test(url)){ toast('请输入 http/https 开头的链接'); return; }
-  input.value = '';
-  toast('正在获取图片…');
-  fetch(url).then(function(r){
-    if(!r.ok) throw new Error('HTTP ' + r.status);
-    return r.blob();
-  }).then(function(blob){
-    if(!blob || (blob.type && blob.type.indexOf('image/') !== 0)) throw new Error('not image');
-    var ext = (url.split('?')[0].split('.').pop() || 'jpg').toLowerCase();
-    if(ext.length > 5 || ['html','php','aspx','jsp','do','action'].indexOf(ext) >= 0) ext = 'jpg';
-    var f = new File([blob], 'paste-' + Date.now() + '.' + ext, { type: blob.type || 'image/jpeg' });
-    editing.newFiles.push({ file: f, path: '', preview: URL.createObjectURL(f) });
-    renderEditImgs();
-    toast('已获取图片，点保存后上传');
-  })['catch'](function(){
-    if(!editing) return;
-    editing.keepImages.push(url);
-    renderEditImgs();
-    toast('该链接无法直接下载（可能防盗链），已按外部链接添加');
-  });
-}
 var R2_ENDPOINT = 'https://410375531f1a5808739b4b9bec773354.r2.cloudflarestorage.com'; // S3 API 端点（上传/删除）
 var R2_BUCKET = 'llllllllmmm';
 var R2_AK = 'c0bf6363e6d65ced70d25a351d8a2279';
@@ -485,6 +453,19 @@ var trashMode = false;   // 回收站视图
 var trashFilter = '';    // 回收站内筛选：'' 全部 / has 有图 / none 无图
 var editingDirty = false;// 编辑未保存
 var confirmCb = null;    // 确认弹窗回调
+var allTotal = 0;        // 数据库记录总数
+var loadedCount = 0;     // 已拉取的记录数（从最新开始）
+var LOAD_BATCH = 50;     // 每次增量加载条数
+var loadingMore = false; // 正在加载更多
+var skipLoadGuard = false; // 删除等局部操作时跳过"筛选自动全量刷新"
+
+/* 滚动到底自动加载更多 */
+window.addEventListener('scroll', function(){
+  if((window.innerHeight + window.scrollY) >= document.body.scrollHeight - 600){
+    if(trashMode){ trashLoadMore(); }
+    else if(loadedCount < allTotal){ loadMore(); }
+  }
+});
 
 /* 内部标签：__fav 收藏 / __trash 回收站（不显示给用户） */
 function hasFav(r){ return (r.tags||[]).indexOf('__fav') >= 0; }
@@ -620,34 +601,96 @@ function showLogin(){
 }
 
 /* ---- 数据 ---- */
-function loadAll(){
+function loadAll(forceFull, done){
   document.getElementById('list').innerHTML = '<div class="loading">加载中…</div>';
-  apiFetch('/rest/v1/prompts?select=*&order=created_at.desc&limit=10000', { token: getToken() }).then(function(data){
-    if(data && data.code){
-      // token 过期 → 自动刷新一次后重试
-      var isExpired = String(data.code).indexOf('JWT') >= 0 || String(data.message||'').indexOf('expired') >= 0;
-      if(isExpired){
-        refreshToken().then(function(ok){
-          if(ok){
-            apiFetch('/rest/v1/prompts?select=*&order=created_at.desc&limit=10000', { token: getToken() }).then(function(d2){
-              if(d2 && d2.code){ document.getElementById('list').innerHTML = '<div class="loading">加载失败：' + d2.message + '</div>'; return; }
-              records = d2 || [];
-              preSignImages();
-            });
-          }else{
-            document.getElementById('list').innerHTML = '<div class="loading">登录已过期，请重新登录</div>';
-            setTimeout(showLogin, 1200);
-          }
+  loadedCount = 0;
+  var filteredNow = hasActiveFilter() || forceFull;
+  // 探总数
+  fetch(SUPABASE_URL + '/rest/v1/prompts?select=id', {
+    method: 'GET',
+    headers: { 'apikey': ANON_KEY, 'Authorization': 'Bearer ' + getToken(), 'Range': '0-0', 'Prefer': 'count=exact' }
+  }).then(function(r){
+    var cr = r.headers.get('content-range') || '';
+    var m = cr.match(/(\d+)-(\d+)\/(\d+)/);
+    allTotal = m ? parseInt(m[3]) : 0;
+    if(filteredNow){
+      // 有筛选/需全量 → 全量并行拉，保证筛选/搜索/回收站正确
+      var pages = [];
+      for(var i=0; i<allTotal; i+=1000){ pages.push(i); }
+      if(!pages.length) pages.push(0);
+      return Promise.all(pages.map(function(start){
+        return fetch(SUPABASE_URL + '/rest/v1/prompts?select=*&order=created_at.desc', {
+          method: 'GET',
+          headers: { 'apikey': ANON_KEY, 'Authorization': 'Bearer ' + getToken(), 'Range': start + '-' + (start+999) }
+        }).then(function(resp){
+          return resp.json().then(function(d){ if(d&&d.code) throw new Error(d.message||'加载失败'); return d||[]; });
         });
-        return;
-      }
-      document.getElementById('list').innerHTML = '<div class="loading">加载失败：' + data.message + '</div>';
+      })).then(function(parts){
+        var all = [];
+        parts.forEach(function(p){ all = all.concat(p); });
+        all.sort(function(a,b){ return (b.created_at||'').localeCompare(a.created_at||''); });
+        return all;
+      });
+    }
+    // 无筛选 → 只拉最新一批，秒开
+    var end = LOAD_BATCH - 1;
+    return fetch(SUPABASE_URL + '/rest/v1/prompts?select=*&order=created_at.desc', {
+      method: 'GET',
+      headers: { 'apikey': ANON_KEY, 'Authorization': 'Bearer ' + getToken(), 'Range': '0-' + end }
+    }).then(function(resp){
+      return resp.json().then(function(data){
+        if(data && data.code) throw new Error(data.message || '加载失败');
+        return data || [];
+      });
+    });
+  }).then(function(data){
+    records = data || [];
+    loadedCount = records.length;
+    preSignImages();
+    if(done) done();
+  }).catch(function(e){
+    var msg = (e && e.message) || e;
+    if(String(msg).indexOf('JWT') >= 0 || String(msg).indexOf('expired') >= 0){
+      refreshToken().then(function(ok){
+        if(ok){ loadAll(forceFull, done); }
+        else{
+          document.getElementById('list').innerHTML = '<div class="loading">登录已过期，请重新登录</div>';
+          setTimeout(showLogin, 1200);
+        }
+      });
       return;
     }
-    records = data || [];
+    document.getElementById('list').innerHTML = '<div class="loading">加载失败：' + msg + '</div>';
+  });
+}
+
+function hasActiveFilter(){
+  var kw = (document.getElementById('searchBar') ? document.getElementById('searchBar').value : '').trim();
+  return !!(currentTag || imgFilter || kw || document.getElementById('dateFrom').value || document.getElementById('dateTo').value);
+}
+
+/* 滚动到底加载下一批 */
+function loadMore(){
+  if(loadingMore || loadedCount >= allTotal) return;
+  loadingMore = true;
+  var start = loadedCount;
+  var end = Math.min(start + LOAD_BATCH - 1, allTotal - 1);
+  fetch(SUPABASE_URL + '/rest/v1/prompts?select=*&order=created_at.desc', {
+    method: 'GET',
+    headers: { 'apikey': ANON_KEY, 'Authorization': 'Bearer ' + getToken(), 'Range': start + '-' + end }
+  }).then(function(resp){
+    return resp.json().then(function(data){
+      if(data && data.code) throw new Error(data.message || '加载失败');
+      return data || [];
+    });
+  }).then(function(data){
+    records = records.concat(data || []);
+    loadedCount = records.length;
     preSignImages();
   }).catch(function(e){
-    document.getElementById('list').innerHTML = '<div class="loading">加载失败：' + (e.message||e) + '</div>';
+    toast('加载更多失败：' + ((e&&e.message)||e));
+  })['finally'](function(){
+    loadingMore = false;
   });
 }
 
@@ -661,7 +704,6 @@ function preSignImages(){
     });
   });
   paths.forEach(function(p){
-    if(/^https?:\/\//i.test(p)) return;   // 外部链接不拼 R2 域名
     signedCache[p] = R2_BASE + '/' + p;
   });
   render();
@@ -724,6 +766,11 @@ function allTags(){
 
 function render(){
   if(trashMode) return;
+  // 有筛选但数据未拉全时，先全量加载再筛（保证搜索/筛选正确）；删除场景跳过避免跳顶
+  if(!skipLoadGuard && hasActiveFilter() && loadedCount < allTotal && loadedCount >= LOAD_BATCH){
+    loadAll();
+    return;
+  }
   // 标签行
   var tagRow = document.getElementById('tagRow');
   var tags = allTags();
@@ -736,14 +783,17 @@ function render(){
   var list = filtered();
   list.sort(function(a,b){ return ((hasFav(b)?1:0)-(hasFav(a)?1:0)); });
   filteredCache = list;
-  document.getElementById('count').textContent = '共 ' + list.length + ' 条记录';
+  document.getElementById('count').textContent = '共 ' + allTotal + ' 条记录';
   var el = document.getElementById('list');
   var hb = document.getElementById('hideImgBtn');
   if(hb) hb.textContent = hideImgs ? '🙈 显示图片' : '👁 隐藏图片';
-  if(list.length === 0){ el.innerHTML = '<div class="loading">没有匹配的记录</div>'; return; }
-  el.innerHTML = list.map(function(r, idx){
+  if(list.length === 0){
+    el.innerHTML = '<div class="loading">没有匹配的记录</div>';
+    return;
+  }
+  var html = list.map(function(r, idx){
     var imgs = r.images || [];
-    var first = imgs.length ? imgUrl(imgs[0]) : '';
+    var first = imgs.length ? (signedCache[imgs[0]] || '') : '';
     var tagsHtml = realTags(r).slice(0,4).map(function(t){ return '<span>'+esc(t)+'</span>'; }).join('');
     var d = (r.created_at||'').slice(0,10);
     var fav = batchMode ? '' : '<button class="favQuick' + (hasFav(r) ? ' on' : '') + '" onclick="event.stopPropagation();quickFav(' + idx + ')">' + (hasFav(r) ? '★' : '☆') + '</button>';
@@ -776,6 +826,11 @@ function render(){
     }
     return '<div class="card' + (batchMode ? ' picking' : '') + '" onclick="' + cardClick + '">' + inner + '</div>';
   }).join('');
+  // 未加载完时追加"加载更多"占位
+  if(loadedCount < allTotal && !trashMode){
+    html += '<div class="loading" id="loadMoreTip">上滑加载更多（' + loadedCount + '/' + allTotal + '）…</div>';
+  }
+  el.innerHTML = html;
 }
 
 function copyTextByIdx(idx){
@@ -815,10 +870,21 @@ function copyText(text){
 }
 function fallbackCopy(text, ok){
   var ta = document.createElement('textarea');
-  ta.value = text; ta.style.position='fixed'; ta.style.opacity='0';
-  document.body.appendChild(ta); ta.select();
-  try{ document.execCommand('copy'); ok(); }catch(e){ toast('复制失败，请长按手动复制'); }
+  ta.value = text;
+  ta.setAttribute('readonly','');
+  ta.style.position='fixed';
+  ta.style.top='0'; ta.style.left='0';
+  ta.style.opacity='0';
+  document.body.appendChild(ta);
+  // 移动端必须 focus + select 后 execCommand 才可能成功
+  ta.focus();
+  ta.select();
+  try{ ta.setSelectionRange(0, text.length); }catch(e){}
+  var done = false;
+  try { done = document.execCommand('copy'); }catch(e){ done = false; }
   document.body.removeChild(ta);
+  if(done){ ok(); }
+  else{ toast('复制失败，请长按文字手动复制'); }
 }
 function toast(msg){
   var el = document.getElementById('toast');
@@ -840,7 +906,7 @@ function openDetail(idx){
   detail = rec;
   var imgs = rec.images || [];
   document.getElementById('detailImgs').innerHTML = imgs.map(function(p, i){
-    var url = imgUrl(p);
+    var url = signedCache[p] || '';
     return url ? '<img src="'+url+'" onclick="zoomAt('+i+')" alt="">' : '';
   }).join('') || '<div class="noimg" style="color:var(--sub);text-align:center;padding:20px">暂无图片</div>';
   document.getElementById('detailPrompt').textContent = rec.prompt_text || '';
@@ -875,7 +941,7 @@ function zoomAt(i){
   if(detail) zoomImgsOf(detail, i);
 }
 function zoomImgsOf(rec, i){
-  var imgs = (rec.images||[]).map(function(p){ return imgUrl(p); }).filter(Boolean);
+  var imgs = (rec.images||[]).map(function(p){ return signedCache[p]||''; }).filter(Boolean);
   if(!imgs.length) return;
   zoomImgs = imgs;
   zoomIdx = Math.min(i||0, imgs.length-1);
@@ -923,12 +989,26 @@ function closeZoom(){
 document.getElementById('detailMask').addEventListener('click', function(e){ if(e.target.id==='detailMask') closeDetail(); });
 
 /* ---- 启动：检查已有登录态 ---- */
+/* 判断 access token 是否已过期（提前 30s 视为过期） */
+function tokenExpired(t){
+  try{
+    var p = t.split('.')[1];
+    p += '='.repeat((4 - p.length % 4) % 4);
+    var payload = JSON.parse(atob(p.replace(/-/g,'+').replace(/_/g,'/')));
+    return (payload.exp * 1000) <= (Date.now() + 30 * 1000);
+  }catch(e){ return true; }
+}
 (function init(){
   if(getToken() && getRefresh()){
-    // 打开页面先自动续期，避免旧 token 过期
-    refreshToken().then(function(ok){
-      if(ok){ showMain(); } else { showLogin(); }
-    });
+    // 只有 access token 真正过期才刷新，避免频繁轮换 refresh token
+    // （Supabase refresh token 单次轮换，多个窗口同时刷新会导致会话被注销掉线）
+    if(tokenExpired(getToken())){
+      refreshToken().then(function(ok){
+        if(ok){ showMain(); } else { showLogin(); }
+      });
+    } else {
+      showMain();
+    }
   }else if(getToken()){
     showMain();
   }else{
@@ -1006,7 +1086,7 @@ function renderEditImgs(){
   var el = document.getElementById('editImgs');
   var html = '';
   editing.keepImages.forEach(function(p){
-    var url = imgUrl(p);
+    var url = signedCache[p] || '';
     var imgHtml = url ? '<img src="'+url+'">' : '<div class="noimg" style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--sub);font-size:11px">图</div>';
     html += '<div class="editImg">'+imgHtml+'<button class="x" onclick="removeImg(\''+esc2(p)+'\')">✕</button></div>';
   });
@@ -1046,120 +1126,20 @@ function editFileChange(input){
   renderEditImgs();
 }
 
-/* 拖拽上传（桌面端）：把图片直接拖进编辑窗口即添加，点保存后上传 */
-(function(){
-  var mask = document.getElementById('editMask');
-  var dragDepth = 0;
-  mask.addEventListener('dragenter', function(e){
-    if(!editing) return;
-    var hasFiles = e.dataTransfer && e.dataTransfer.types && Array.prototype.indexOf.call(e.dataTransfer.types, 'Files') >= 0;
-    if(!hasFiles) return;
-    e.preventDefault();
-    dragDepth++;
-    mask.classList.add('drag-over');
-  });
-  mask.addEventListener('dragover', function(e){
-    if(!editing) return;
-    e.preventDefault();
-  });
-  mask.addEventListener('dragleave', function(e){
-    if(!editing) return;
-    e.preventDefault();
-    dragDepth--;
-    if(dragDepth <= 0){ dragDepth = 0; mask.classList.remove('drag-over'); }
-  });
-  mask.addEventListener('drop', function(e){
-    if(!editing) return;
-    e.preventDefault();
-    dragDepth = 0;
-    mask.classList.remove('drag-over');
-    var files = Array.prototype.slice.call((e.dataTransfer && e.dataTransfer.files) || []);
-    if(!files.length){ toast('未检测到文件，请拖入图片'); return; }
-    var added = 0;
-    for(var i=0; i<files.length; i++){
-      var f = files[i];
-      if(f.type && f.type.indexOf('image/') !== 0) continue;
-      editing.newFiles.push({ file: f, path: '', preview: URL.createObjectURL(f) });
-      added++;
-    }
-    if(added === 0){ toast('未识别图片格式，请拖入图片文件'); return; }
-    renderEditImgs();
-    toast('已添加 ' + added + ' 张图片，点保存后上传');
-  });
-})();
-
-/* 图片压缩（上传前自动压缩，大幅减小体积、提升上传速度） */
-function compressImage(file, maxSide, quality){
-  return new Promise(function(resolve){
-    if(!file || (file.type && file.type.indexOf('image/') !== 0)){ resolve(file); return; }
-    if(file.type === 'image/gif'){ resolve(file); return; }
-    var url = URL.createObjectURL(file);
-    var img = new Image();
-    img.onload = function(){
-      var w = img.width, h = img.height;
-      if(!w || !h){ URL.revokeObjectURL(url); resolve(file); return; }
-      var scale = Math.min(1, maxSide / Math.max(w, h));
-      var nw = Math.max(1, Math.round(w * scale)), nh = Math.max(1, Math.round(h * scale));
-      var canvas = document.createElement('canvas');
-      canvas.width = nw; canvas.height = nh;
-      var ctx = canvas.getContext('2d');
-      ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, nw, nh);
-      ctx.drawImage(img, 0, 0, nw, nh);
-      URL.revokeObjectURL(url);
-      canvas.toBlob(function(blob){
-        if(!blob || blob.size >= file.size){ resolve(file); return; }
-        resolve(new File([blob], file.name.replace(/\.[^.]+$/, '.jpg'), { type: 'image/jpeg' }));
-      }, 'image/jpeg', quality);
-    };
-    img.onerror = function(){ URL.revokeObjectURL(url); resolve(file); };
-    img.src = url;
-  });
-}
-
-/* storage 上传（直传 Cloudflare R2，SigV4；原图直传 + 失败一直重试直到成功） */
+/* storage 上传（直传 Cloudflare R2，SigV4） */
 function uploadToStorage(path, file){
   return new Promise(function(resolve, reject){
     var reader = new FileReader();
     reader.onload = function(){
       var bytes = new Uint8Array(reader.result);
-      var retryDelay = 500;
-      function attempt(){
-        r2Request('PUT', path, bytes).then(function(resp){
-          if(resp.ok){ resolve({ ok: true }); }
-          else if(resp.status === 401 || resp.status === 403){
-            // 签名/权限错误：重试无意义，直接报错
-            return resp.text().then(function(t){ reject(new Error('HTTP '+resp.status+' '+(t||'').slice(0,80))); });
-          }
-          else {
-            retryDelay = Math.min(retryDelay * 2, 5000);
-            setTimeout(attempt, retryDelay);
-          }
-        })['catch'](function(e){
-          retryDelay = Math.min(retryDelay * 2, 5000);
-          setTimeout(attempt, retryDelay);
-        });
-      }
-      attempt();
+      r2Request('PUT', path, bytes).then(function(resp){
+        if(resp.ok){ resolve({ ok: true }); }
+        else { return resp.text().then(function(t){ throw new Error('HTTP '+resp.status+' '+(t||'').slice(0,80)); }); }
+      }).catch(function(e){ reject(e); });
     };
     reader.onerror = function(){ reject(new Error('读取文件失败')); };
     reader.readAsArrayBuffer(file);
   });
-}
-/* 保存类请求失败重试（退避递增；登录过期不重试，其余一直重试直到成功） */
-function withRetry(fn){
-  var retryDelay = 800;
-  function go(){
-    return Promise.resolve().then(fn)['catch'](function(e){
-      var msg = (e && e.message ? e.message : String(e || ''));
-      if(msg.indexOf('JWT') >= 0 || msg.indexOf('expired') >= 0 || msg.indexOf('401') >= 0){
-        toast('保存失败：登录已过期，请退出后重新登录');
-        throw e;
-      }
-      retryDelay = Math.min(retryDelay * 2, 5000);
-      return new Promise(function(res){ setTimeout(res, retryDelay); }).then(go);
-    });
-  }
-  return go();
 }
 function deleteFromStorage(path){
   // 直删 R2 对象
@@ -1172,59 +1152,75 @@ function deleteFromStorage(path){
 /* 保存 */
 function saveRecord(){
   if(!editing) return;
+  var btn = document.getElementById('saveBtn');
   var promptText = document.getElementById('editPrompt').value.trim();
   if(!promptText){ toast('请输入提示词'); return; }
   var tags = document.getElementById('editTags').value.split(/[,，、;；\n]/).map(function(s){ return s.trim(); }).filter(function(s){ return s && s.indexOf('__') !== 0; });
   var variants = document.getElementById('editVariants').value.split('\n').map(function(s){ return s.trim(); }).filter(Boolean);
+  btn.textContent = '保存中…';
+  btn.disabled = true;
 
   var rid = editing.id || uuid();
-  var keepImages = (editing.keepImages||[]).slice();
-  var removedImages = (editing.removedImages||[]).slice();
-  var newFiles = (editing.newFiles||[]).slice();
-  var isNew = !editing.id;
-
-  // 立即关闭弹窗 → 后台保存，不阻塞继续操作
-  editingDirty = false;
-  closeEdit();
-  toast('正在后台保存，可继续操作…');
-
-  var uploadTasks = newFiles.map(function(f, i){
+  var savedImages = [];
+  var uploadTotal = editing.newFiles.length;
+  var uploadDone = 0;
+  var uploadTasks = editing.newFiles.map(function(f, i){
     var ext = (f.file.name.split('.').pop() || 'png').toLowerCase();
     if(ext.length > 5) ext = 'png';
     var path = 'record-' + rid + '/' + Date.now() + '_' + i + '.' + ext;
-    return uploadToStorage(path, f.file).then(function(){ return path; });
+    f.path = path;
+    return uploadToStorage(path, f.file).then(function(){
+      uploadDone++;
+      if(uploadTotal > 0){ btn.textContent = '保存中 ' + uploadDone + '/' + uploadTotal; }
+      return path;
+    });
   });
-  var delTasks = removedImages.map(function(p){ return deleteFromStorage(p); });
+  // 删除被移除的旧图
+  var delTasks = editing.removedImages.map(function(p){ return deleteFromStorage(p); });
 
   Promise.all(delTasks)['catch'](function(){})
   .then(function(){ return Promise.all(uploadTasks); })
   .then(function(newPaths){
-    var images = keepImages.concat(newPaths);
+    var images = editing.keepImages.concat(newPaths);
+    savedImages = images;
     var payload = {
+      user_id: 'cb23b6c5-667a-4426-94f9-5a6c25505619',
       prompt_text: promptText,
       tags: tags,
       variant_prompts: variants,
       images: images
     };
-    return withRetry(function(){
-      if(!isNew){
-        return apiFetch('/rest/v1/prompts?id=eq.' + encodeURIComponent(rid), {
-          method: 'PATCH', token: getToken(), body: payload, raw: true
-        }).then(function(r){ if(!r.ok){ return r.json().then(function(d){ throw new Error(d.message||'保存失败'); }); } return {new:false, id: rid}; });
-      }else{
-        payload.user_id = 'cb23b6c5-667a-4426-94f9-5a6c25505619';
-        return apiFetch('/rest/v1/prompts', {
-          method: 'POST', token: getToken(), body: payload, prefer: 'return=representation', raw: true
-        }).then(function(r){
-          if(!r.ok){ return r.json().then(function(d){ throw new Error(d.message||'保存失败'); }); }
-          return r.json()['catch'](function(){ return []; }).then(function(d){ return {new:true, id: d && d.length ? d[0].id : rid}; });
-        });
-      }
-    });
-  }).then(function(){
+    if(editing.id){
+      delete payload.user_id;
+      return apiFetch('/rest/v1/prompts?id=eq.' + encodeURIComponent(editing.id), {
+        method: 'PATCH', token: getToken(), body: payload, raw: true
+      }).then(function(r){ if(!r.ok){ return r.json().then(function(d){ throw new Error(d.message||'保存失败'); }); } return {new:false, id: editing.id}; });
+    }else{
+      return apiFetch('/rest/v1/prompts', {
+        method: 'POST', token: getToken(), body: payload, prefer: 'return=representation', raw: true
+      }).then(function(r){
+        if(!r.ok){ return r.json().then(function(d){ throw new Error(d.message||'保存失败'); }); }
+        return r.json()['catch'](function(){ return []; }).then(function(d){ return {new:true, id: d && d.length ? d[0].id : rid}; });
+      });
+    }
+  }).then(function(res){
+    btn.textContent = '保 存'; btn.disabled = false;
+    editingDirty = false;
     toast('已保存');
+    if(res.new && res.id){ editing.id = res.id; }
+    closeEdit();
     loadAll();
-  })['catch'](function(){ /* 登录过期等已由 withRetry 提示 */ });
+  })['catch'](function(e){
+    btn.textContent = '保 存'; btn.disabled = false;
+    var msg = (e && e.message ? e.message : String(e || '未知错误'));
+    var hint = '';
+    if(msg.indexOf('JWT') >= 0 || msg.indexOf('expired') >= 0 || msg.indexOf('401') >= 0){
+      hint = '\n\n登录已过期：请先点右上角退出，再重新登录一次（输入 邮箱和密码 登录后即可继续保存）。';
+    }else{
+      hint = '\n\n请检查网络后重试。';
+    }
+    askConfirm('保存失败：' + msg + hint, null, '知道了');
+  });
 }
 
 /* ========== 确认弹窗（通用） ========== */
@@ -1282,8 +1278,20 @@ function doDelete(){
     if(r && !r.ok) throw new Error('删除失败');
     closeEdit();
     toast('已移入回收站');
-    loadAll();
+    // 本地移除，不整页刷新，保持当前位置方便连续操作
+    removeRecordLocal(rec.id);
   })['catch'](function(e){ toast('删除失败：' + (e&&e.message?e.message:e)); });
+}
+
+/* 从当前列表本地移除一条记录，不重新拉取/不跳回顶部 */
+function removeRecordLocal(id){
+  var before = records.length;
+  records = records.filter(function(r){ return r.id !== id; });
+  if(records.length !== before && loadedCount > records.length) loadedCount = records.length;
+  if(detail && detail.id === id) closeDetail();
+  skipLoadGuard = true;   // 删除场景：禁止触发全量刷新，就地重绘保持位置
+  render();
+  skipLoadGuard = false;
 }
 
 /* ========== 回收站 ========== */
@@ -1296,8 +1304,21 @@ function showTrash(on){
   document.getElementById('batchBar').classList.toggle('show', false);
   batchMode = false; batchSet = {};
   document.getElementById('trashView').classList.toggle('show', on);
-  if(on) renderTrash(); else render();
+  if(on){
+    trashShown = 60;
+    // 进入回收站需全量数据（增量模式下可能没加载全），先拉全量再渲染
+    if(loadedCount < allTotal && !trashFullLoading){
+      trashFullLoading = true;
+      loadAll(true, function(){ trashFullLoading = false; renderTrash(); });
+    } else {
+      renderTrash();
+    }
+  } else {
+    render();
+  }
 }
+var trashFullLoading = false;
+var trashShown = 60;   // 回收站每批渲染条数（滚动到底追加）
 function trashRecords(){
   return records.filter(isTrash);
 }
@@ -1306,6 +1327,7 @@ function setTrashFilter(f){
   document.getElementById('tfAll').classList.toggle('on', f==='');
   document.getElementById('tfHas').classList.toggle('on', f==='has');
   document.getElementById('tfNone').classList.toggle('on', f==='none');
+  trashShown = 60;
   renderTrash();
 }
 function renderTrash(){
@@ -1318,30 +1340,65 @@ function renderTrash(){
   document.getElementById('trashCount').textContent = '回收站共 ' + all.length + ' 条' + (trashFilter ? '（' + list.length + ' 条匹配）' : '');
   var el = document.getElementById('trashList');
   if(!list.length){ el.innerHTML = '<div class="loading">回收站是空的</div>'; return; }
-  el.innerHTML = list.map(function(r){
+  // 分批渲染，避免一次性渲染上千卡片卡死
+  var shown = list.slice(0, trashShown);
+  el.innerHTML = shown.map(function(r){
     var imgs = r.images || [];
-    var first = imgs.length ? imgUrl(imgs[0]) : '';
+    var first = imgs.length ? (signedCache[imgs[0]] || '') : '';
     var imgHtml = imgs.length
-      ? (first ? '<img loading="lazy" src="'+first+'" alt="" onerror="retryImg(this)">' : '<div class="noimg">图</div>')
+      ? (first ? '<img loading="lazy" src="'+first+'" alt="" onclick="event.stopPropagation();zoomTrash(\'' + r.id + '\')" onerror="retryImg(this)">' : '<div class="noimg">图</div>')
       : '<div class="noimg">暂无图片</div>';
     var d = (r.created_at||'').slice(0,10);
     return '<div class="card trashCard"><div class="cardImgWrap">' + imgHtml +
       (imgs.length>1 ? '<span class="imgCount">'+imgs.length+' 图</span>' : '') +
-      '</div><div class="cardBody">' +
+      '<button class="trashCopy" title="复制提示词" onclick="event.stopPropagation();copyText(\'' + esc2(r.prompt_text || '') + '\')">📋</button>' +
+      '<div class="trashActs">' +
+        '<button class="copyBtn" onclick="event.stopPropagation();restoreTrash(\'' + r.id + '\')">↩ 恢复</button>' +
+        '<button class="copyBtn danger" onclick="event.stopPropagation();purgeTrash(\'' + r.id + '\')">永久删除</button>' +
+      '</div></div><div class="cardBody">' +
       '<div class="cardPrompt">'+esc((r.prompt_text||'').slice(0,120))+'</div>' +
-      '<div class="cardFoot">' +
-        '<button class="copyBtn" onclick="restoreTrash(\'' + r.id + '\')">↩ 恢复</button>' +
-        '<button class="copyBtn" style="color:#ff6b6b" onclick="purgeTrash(\'' + r.id + '\')">永久删除</button>' +
-        '<span class="cardDate">'+d+'</span>' +
-      '</div></div></div>';
+      '<div class="cardFoot"><span class="cardDate">'+d+'</span></div>' +
+      '</div></div>';
   }).join('');
+  // 未显示完时追加"加载更多"占位
+  if(list.length > trashShown){
+    el.insertAdjacentHTML('beforeend', '<div class="loading">上滑加载更多（' + trashShown + '/' + list.length + '）…</div>');
+  }
+}
+/* 回收站滚动到底加载下一批 */
+function trashLoadMore(){
+  if(trashMode){
+    trashShown += 60;
+    renderTrash();
+  }
+}
+function copyTrash(id){
+  for(var i=0;i<records.length;i++){
+    if(records[i].id === id){
+      copyText(records[i].prompt_text || '');
+      return;
+    }
+  }
+  toast('未找到记录');
+}
+/* 回收站图片全屏放大 */
+function zoomTrash(id){
+  for(var i=0;i<records.length;i++){
+    if(records[i].id === id){
+      var imgs = (records[i].images||[]).map(function(p){ return signedCache[p]||''; }).filter(Boolean);
+      if(imgs.length){ zoomImgs = imgs; zoomIdx = 0; showZoom(0); }
+      return;
+    }
+  }
 }
 function restoreTrash(id){
   apiFetch('/rest/v1/prompts?id=eq.' + encodeURIComponent(id), {
     method: 'PATCH', token: getToken(), body: { tags: realTagsById(id) }, raw: true
   }).then(function(r){
     if(r && !r.ok) throw new Error('恢复失败');
-    toast('已恢复'); showTrash(true); loadAll();
+    // 本地更新记录、就地重绘回收站，不整页刷新
+    for(var i=0;i<records.length;i++) if(records[i].id === id) records[i].tags = realTags(records[i]);
+    toast('已恢复'); renderTrash();
   })['catch'](function(e){ toast('失败：' + (e&&e.message?e.message:e)); });
 }
 function realTagsById(id){
@@ -1358,7 +1415,10 @@ function purgeTrash(id){
     .then(function(){ return apiFetch('/rest/v1/prompts?id=eq.' + encodeURIComponent(id), { method: 'DELETE', token: getToken(), raw: true }); })
     .then(function(r){
       if(r && !r.ok) throw new Error('删除失败');
-      toast('已永久删除'); showTrash(true); loadAll();
+      // 本地移除、就地重绘回收站，不整页刷新
+      records = records.filter(function(x){ return x.id !== id; });
+      if(loadedCount > records.length) loadedCount = records.length;
+      toast('已永久删除'); renderTrash();
     })['catch'](function(e){ toast('失败：' + (e&&e.message?e.message:e)); });
   }, '永久删除');
 }
@@ -1631,7 +1691,7 @@ function saveAllImages(list){
   function next(){
     if(i >= paths.length){ toast('已保存 ' + paths.length + ' 张图片'); return; }
     var p = paths[i++];
-    var url = imgUrl(p);
+    var url = signedCache[p];
     if(!url){ next(); return; }
     fetch(url).then(function(r){ if(!r.ok) throw new Error('load fail'); return r.blob(); })
     .then(function(blob){
@@ -1769,30 +1829,20 @@ function processQuickFiles(files, forcedRec){
   }
   if(!tasks.length){ toast('未识别图片格式，请换一张试试'); return; }
   var imgs = [];
-  toast('上传中，完成后自动保存…');
+  toast('图片上传中（后台进行，可继续操作）…');
   Promise.all(tasks).then(function(paths){
     imgs = (rec.images||[]).concat(paths);
-    return withRetry(function(){
-      return apiFetch('/rest/v1/prompts?id=eq.' + encodeURIComponent(rec.id), {
-        method: 'PATCH', token: getToken(), body: { images: imgs }, raw: true
-      }).then(function(r){
-        if(r && !r.ok){ return r.json().then(function(d){ throw new Error(d.message||'保存失败'); }); }
-        return true;
-      });
+    return apiFetch('/rest/v1/prompts?id=eq.' + encodeURIComponent(rec.id), {
+      method: 'PATCH', token: getToken(), body: { images: imgs }, raw: true
     });
-  }).then(function(){
+  }).then(function(r){
+    if(r && !r.ok){ return r.json().then(function(d){ throw new Error(d.message||'保存失败'); }); }
     toast('已上传并自动保存');
-    if(imgFilter === 'none'){
-      imgFilter = '';
-      document.getElementById('fNone').classList.remove('on');
-      document.getElementById('fAll').classList.add('on');
-      toast('上传成功，已切回「全部」');
-    }
     rec.images = imgs;
     loadAll();
     closeEdit();
   })['catch'](function(e){
-    toast('上传失败：' + (e && e.message ? e.message : e) + '（可重新上传）');
+    toast('上传失败：' + (e && e.message ? e.message : e) + '，可重试');
   });
 }
 function quickFileChange(input){
