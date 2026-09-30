@@ -235,11 +235,11 @@ header h1{font-size:18px;flex:1;white-space:nowrap}
       <button class="addBtn" onclick="openNew()">＋ 新增</button>
       <button id="logoutBtn" onclick="doLogout()">退出</button>
     </div>
-    <input id="searchBar" placeholder="搜索关键词 / 标签…" oninput="render()">
+    <input id="searchBar" placeholder="搜索关键词 / 标签…" oninput="mainShown=60;render()">
     <div class="dateRow">
-      <input type="date" id="dateFrom" onchange="render()">
+      <input type="date" id="dateFrom" onchange="mainShown=60;render()">
       <span style="color:var(--sub);font-size:12px">~</span>
-      <input type="date" id="dateTo" onchange="render()">
+      <input type="date" id="dateTo" onchange="mainShown=60;render()">
       <button class="miniBtn" onclick="clearDates()">清除</button>
     </div>
     <div class="filterRow">
@@ -456,6 +456,7 @@ var confirmCb = null;    // 确认弹窗回调
 var allTotal = 0;        // 数据库记录总数
 var loadedCount = 0;     // 已拉取的记录数（从最新开始）
 var LOAD_BATCH = 50;     // 每次增量加载条数
+var mainShown = 60;      // 主列表每批渲染条数（滚动追加，避免一次渲染上千卡片卡死）
 var loadingMore = false; // 正在加载更多
 var skipLoadGuard = false; // 删除等局部操作时跳过"筛选自动全量刷新"
 
@@ -463,7 +464,11 @@ var skipLoadGuard = false; // 删除等局部操作时跳过"筛选自动全量�
 window.addEventListener('scroll', function(){
   if((window.innerHeight + window.scrollY) >= document.body.scrollHeight - 600){
     if(trashMode){ trashLoadMore(); }
-    else if(loadedCount < allTotal){ loadMore(); }
+    else {
+      mainShown += 60;
+      if(loadedCount < allTotal && !hasActiveFilter()){ loadMore(); }
+      render();
+    }
   }
 });
 
@@ -646,6 +651,7 @@ function loadAll(forceFull, done){
   }).then(function(data){
     records = data || [];
     loadedCount = records.length;
+    mainShown = 60;
     preSignImages();
     if(done) done();
   }).catch(function(e){
@@ -687,6 +693,7 @@ function loadMore(){
     records = records.concat(data || []);
     loadedCount = records.length;
     preSignImages();
+    render();   // 加载更多后必须重绘，否则新数据不显示
   }).catch(function(e){
     toast('加载更多失败：' + ((e&&e.message)||e));
   })['finally'](function(){
@@ -738,12 +745,12 @@ function setImgFilter(f){
   document.getElementById('fHas').classList.toggle('on', f==='has');
   document.getElementById('fNone').classList.toggle('on', f==='none');
   document.getElementById('fFav').classList.toggle('on', f==='fav');
-  if(!trashMode) render();
+  if(!trashMode){ mainShown = 60; render(); }
 }
 function clearDates(){
   document.getElementById('dateFrom').value = '';
   document.getElementById('dateTo').value = '';
-  if(!trashMode) render();
+  if(!trashMode){ mainShown = 60; render(); }
 }
 function toggleHideImgs(){
   hideImgs = !hideImgs;
@@ -751,7 +758,7 @@ function toggleHideImgs(){
   var hb = document.getElementById('hideImgBtn');
   if(hb) hb.textContent = hideImgs ? '🙈 显示图片' : '👁 隐藏图片';
   toast(hideImgs ? '已隐藏图片（点击图片可临时查看）' : '已显示图片');
-  if(!trashMode) render();
+  if(!trashMode){ mainShown = 60; render(); }
 }
 
 /* ---- 渲染 ---- */
@@ -791,7 +798,8 @@ function render(){
     el.innerHTML = '<div class="loading">没有匹配的记录</div>';
     return;
   }
-  var html = list.map(function(r, idx){
+  var shown = list.slice(0, mainShown);
+  var html = shown.map(function(r, idx){
     var imgs = r.images || [];
     var first = imgs.length ? (signedCache[imgs[0]] || '') : '';
     var tagsHtml = realTags(r).slice(0,4).map(function(t){ return '<span>'+esc(t)+'</span>'; }).join('');
@@ -826,9 +834,11 @@ function render(){
     }
     return '<div class="card' + (batchMode ? ' picking' : '') + '" onclick="' + cardClick + '">' + inner + '</div>';
   }).join('');
-  // 未加载完时追加"加载更多"占位
-  if(loadedCount < allTotal && !trashMode){
-    html += '<div class="loading" id="loadMoreTip">上滑加载更多（' + loadedCount + '/' + allTotal + '）…</div>';
+  // 未加载完或未显示完时追加"加载更多"占位
+  if(!trashMode && (mainShown < list.length || loadedCount < allTotal)){
+    var shownNow = Math.min(mainShown, list.length);
+    var totalNow = (loadedCount < allTotal && !hasActiveFilter()) ? allTotal : list.length;
+    html += '<div class="loading" id="loadMoreTip">上滑加载更多（已显示 ' + shownNow + '/' + totalNow + '）…</div>';
   }
   el.innerHTML = html;
 }
@@ -859,7 +869,7 @@ function retryImg(img){
   }
 }
 
-function setTag(t){ currentTag = t; render(); }
+function setTag(t){ currentTag = t; mainShown = 60; render(); }
 
 /* ---- 复制 ---- */
 function copyText(text){
