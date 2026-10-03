@@ -432,11 +432,15 @@ async function r2Request(method, key, bodyBytes){
   var kSigning = await hmacBytes(kService, 'aws4_request');
   var signature = toHexBytes(await hmacBytes(kSigning, stringToSign));
   var auth = 'AWS4-HMAC-SHA256 Credential='+R2_AK+'/'+scope+', SignedHeaders='+signedHeaders+', Signature='+signature;
+  var ctl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+  var timer = ctl ? setTimeout(function(){ ctl.abort(); }, 20000) : null;  // 存储请求最多等20s，防止卡死
   var resp = await fetch(R2_ENDPOINT+'/'+R2_BUCKET+'/'+encKey, {
     method: method,
     headers: { 'Authorization': auth, 'x-amz-date': amzDate, 'x-amz-content-sha256': payloadHash },
-    body: bodyBytes && bodyBytes.length ? bodyBytes : undefined
+    body: bodyBytes && bodyBytes.length ? bodyBytes : undefined,
+    signal: ctl ? ctl.signal : undefined
   });
+  if(timer) clearTimeout(timer);
   return resp;
 }
 
@@ -1432,9 +1436,9 @@ function purgeTrash(id){
   for(var i=0;i<records.length;i++) if(records[i].id === id) rec = records[i];
   if(!rec) return;
   askConfirm('彻底删除这条记录？其图片也将从云端删除，无法恢复。', function(){
-    var delStorage = (rec.images||[]).map(function(p){ return deleteFromStorage(p); });
-    Promise.all(delStorage)['catch'](function(){})
-    .then(function(){ return apiFetch('/rest/v1/prompts?id=eq.' + encodeURIComponent(id), { method: 'DELETE', token: getToken(), raw: true }); })
+    // 图片改为后台异步删（不阻塞，删记录先生效，界面立即有反应）
+    (rec.images || []).forEach(function(p){ deleteFromStorage(p)['catch'](function(){}); });
+    apiFetch('/rest/v1/prompts?id=eq.' + encodeURIComponent(id), { method: 'DELETE', token: getToken(), raw: true })
     .then(function(r){
       if(r && !r.ok) throw new Error('删除失败');
       // 本地移除、只移除对应卡片（不整批重建，保持流畅）
