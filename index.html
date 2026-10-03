@@ -1357,6 +1357,13 @@ function loadTrashOnly(){
     parts.forEach(function(p){ all = all.concat(p); });
     all.sort(function(a,b){ return (b.created_at||'').localeCompare(a.created_at||''); });
     trashData = all;
+    // 预签名回收站图片（R2 直链），否则预览图不显示
+    var seen = {};
+    all.forEach(function(r){
+      (r.images||[]).forEach(function(p){
+        if(!seen[p]){ seen[p] = 1; signedCache[p] = R2_BASE + '/' + p; }
+      });
+    });
     renderTrash();
   })['catch'](function(e){
     var msg = (e && e.message) || e;
@@ -1443,9 +1450,11 @@ function copyTrash(id){
 }
 /* 回收站图片全屏放大 */
 function zoomTrash(id){
-  for(var i=0;i<records.length;i++){
-    if(records[i].id === id){
-      var imgs = (records[i].images||[]).map(function(p){ return signedCache[p]||''; }).filter(Boolean);
+  // 回收站走独立数据 trashData，找不到再查 records
+  var src = trashData.length ? trashData : records;
+  for(var i=0;i<src.length;i++){
+    if(src[i].id === id){
+      var imgs = (src[i].images||[]).map(function(p){ return signedCache[p]||''; }).filter(Boolean);
       if(imgs.length){ zoomImgs = imgs; zoomIdx = 0; showZoom(0); }
       return;
     }
@@ -1463,12 +1472,14 @@ function restoreTrash(id){
   })['catch'](function(e){ toast('失败：' + (e&&e.message?e.message:e)); });
 }
 function realTagsById(id){
-  for(var i=0;i<records.length;i++) if(records[i].id === id) return realTags(records[i]);
+  var src = trashData.length ? trashData : records;
+  for(var i=0;i<src.length;i++) if(src[i].id === id) return realTags(src[i]);
   return [];
 }
 function purgeTrash(id){
   var rec = null;
-  for(var i=0;i<records.length;i++) if(records[i].id === id) rec = records[i];
+  var src = trashData.length ? trashData : records;
+  for(var i=0;i<src.length;i++) if(src[i].id === id) rec = src[i];
   if(!rec) return;
   askConfirm('彻底删除这条记录？其图片也将从云端删除，无法恢复。', function(){
     // 图片改为后台异步删（不阻塞，删记录先生效，界面立即有反应）
