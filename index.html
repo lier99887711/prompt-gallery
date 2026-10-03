@@ -501,11 +501,16 @@ function refreshToken(){
   var rt = getRefresh();
   if(!rt) return Promise.resolve(false);
   if(_refreshing) return _refreshing;
+  var ctl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+  var timer = null;
+  if(ctl){ timer = setTimeout(function(){ ctl.abort(); }, 15000); }  // 刷新最多等15s，防止挂死整个界面
   _refreshing = fetch(SUPABASE_URL + '/auth/v1/token?grant_type=refresh_token', {
     method: 'POST',
     headers: { 'apikey': ANON_KEY, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ refresh_token: rt })
+    body: JSON.stringify({ refresh_token: rt }),
+    signal: ctl ? ctl.signal : undefined
   }).then(function(r){ return r.json(); }).then(function(data){
+    if(timer) clearTimeout(timer);
     if(data.access_token){
       setToken(data.access_token);
       if(data.refresh_token) setRefresh(data.refresh_token);
@@ -513,7 +518,7 @@ function refreshToken(){
     }
     clearToken(); clearRefresh();
     return false;
-  })['catch'](function(){ return false; }).then(function(v){
+  })['catch'](function(){ if(timer) clearTimeout(timer); return false; }).then(function(v){
     _refreshing = null;
     return v;
   });
@@ -1162,37 +1167,37 @@ function deleteFromStorage(path){
 /* 保存 */
 function saveRecord(){
   if(!editing) return;
-  var btn = document.getElementById('saveBtn');
   var promptText = document.getElementById('editPrompt').value.trim();
   if(!promptText){ toast('请输入提示词'); return; }
   var tags = document.getElementById('editTags').value.split(/[,，、;；\n]/).map(function(s){ return s.trim(); }).filter(function(s){ return s && s.indexOf('__') !== 0; });
   var variants = document.getElementById('editVariants').value.split('\n').map(function(s){ return s.trim(); }).filter(Boolean);
-  btn.textContent = '保存中…';
-  btn.disabled = true;
 
   var rid = editing.id || uuid();
-  var savedImages = [];
-  var uploadTotal = editing.newFiles.length;
+  var isEdit = !!editing.id;
+  var keepImages = editing.keepImages;
+  var newFiles = editing.newFiles;
+  var removedImages = editing.removedImages;
+
+  // 立即关闭编辑弹窗，切换到后台保存（不阻塞界面，可继续做别的）
+  closeEdit();
+  toast('正在后台保存…');
+
+  var uploadTotal = newFiles.length;
   var uploadDone = 0;
-  var uploadTasks = editing.newFiles.map(function(f, i){
+  var uploadTasks = newFiles.map(function(f, i){
     var ext = (f.file.name.split('.').pop() || 'png').toLowerCase();
     if(ext.length > 5) ext = 'png';
     var path = 'record-' + rid + '/' + Date.now() + '_' + i + '.' + ext;
     f.path = path;
-    return uploadToStorage(path, f.file).then(function(){
-      uploadDone++;
-      if(uploadTotal > 0){ btn.textContent = '保存中 ' + uploadDone + '/' + uploadTotal; }
-      return path;
-    });
+    return uploadToStorage(path, f.file).then(function(){ uploadDone++; return path; });
   });
   // 删除被移除的旧图
-  var delTasks = editing.removedImages.map(function(p){ return deleteFromStorage(p); });
+  var delTasks = removedImages.map(function(p){ return deleteFromStorage(p); });
 
   Promise.all(delTasks)['catch'](function(){})
   .then(function(){ return Promise.all(uploadTasks); })
   .then(function(newPaths){
-    var images = editing.keepImages.concat(newPaths);
-    savedImages = images;
+    var images = keepImages.concat(newPaths);
     var payload = {
       user_id: 'cb23b6c5-667a-4426-94f9-5a6c25505619',
       prompt_text: promptText,
@@ -1200,11 +1205,11 @@ function saveRecord(){
       variant_prompts: variants,
       images: images
     };
-    if(editing.id){
+    if(isEdit){
       delete payload.user_id;
-      return apiFetch('/rest/v1/prompts?id=eq.' + encodeURIComponent(editing.id), {
+      return apiFetch('/rest/v1/prompts?id=eq.' + encodeURIComponent(rid), {
         method: 'PATCH', token: getToken(), body: payload, raw: true
-      }).then(function(r){ if(!r.ok){ return r.json().then(function(d){ throw new Error(d.message||'保存失败'); }); } return {new:false, id: editing.id}; });
+      }).then(function(r){ if(!r.ok){ return r.json().then(function(d){ throw new Error(d.message||'保存失败'); }); } return {new:false, id: rid}; });
     }else{
       return apiFetch('/rest/v1/prompts', {
         method: 'POST', token: getToken(), body: payload, prefer: 'return=representation', raw: true
@@ -1214,22 +1219,18 @@ function saveRecord(){
       });
     }
   }).then(function(res){
-    btn.textContent = '保 存'; btn.disabled = false;
     editingDirty = false;
     toast('已保存');
-    if(res.new && res.id){ editing.id = res.id; }
-    closeEdit();
     loadAll();
   })['catch'](function(e){
-    btn.textContent = '保 存'; btn.disabled = false;
     var msg = (e && e.message ? e.message : String(e || '未知错误'));
     var hint = '';
     if(msg.indexOf('JWT') >= 0 || msg.indexOf('expired') >= 0 || msg.indexOf('401') >= 0){
-      hint = '\n\n登录已过期：请先点右上角退出，再重新登录一次（输入 邮箱和密码 登录后即可继续保存）。';
+      hint = '登录已过期，请重新登录后再保存。';
     }else{
-      hint = '\n\n请检查网络后重试。';
+      hint = '请检查网络后重试。';
     }
-    askConfirm('保存失败：' + msg + hint, null, '知道了');
+    toast('保存失败：' + msg + ' ' + hint);
   });
 }
 
