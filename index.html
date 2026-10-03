@@ -1341,7 +1341,7 @@ function setTrashFilter(f){
   trashShown = 60;
   renderTrash();
 }
-function renderTrash(){
+function trashFiltered(){
   var all = trashRecords();
   var list = all.filter(function(r){
     if(trashFilter === 'has') return (r.images||[]).length > 0;
@@ -1349,6 +1349,17 @@ function renderTrash(){
     return true;
   });
   document.getElementById('trashCount').textContent = '回收站共 ' + all.length + ' 条' + (trashFilter ? '（' + list.length + ' 条匹配）' : '');
+  return list;
+}
+/* 操作后局部移除单张卡片（不整批重建，避免卡顿） */
+function removeTrashCard(id){
+  var card = document.querySelector('#trashList .trashCard[data-id="' + id + '"]');
+  if(card) card.remove();
+  trashFiltered();
+  if(!trashRecords().length) document.getElementById('trashList').innerHTML = '<div class="loading">回收站是空的</div>';
+}
+function renderTrash(){
+  var list = trashFiltered();
   var el = document.getElementById('trashList');
   if(!list.length){ el.innerHTML = '<div class="loading">回收站是空的</div>'; return; }
   // 分批渲染，避免一次性渲染上千卡片卡死
@@ -1360,7 +1371,7 @@ function renderTrash(){
       ? (first ? '<img loading="lazy" src="'+first+'" alt="" onclick="event.stopPropagation();zoomTrash(\'' + r.id + '\')" onerror="retryImg(this)">' : '<div class="noimg">图</div>')
       : '<div class="noimg">暂无图片</div>';
     var d = (r.created_at||'').slice(0,10);
-    return '<div class="card trashCard"><div class="cardImgWrap">' + imgHtml +
+    return '<div class="card trashCard" data-id="'+r.id+'"><div class="cardImgWrap">' + imgHtml +
       (imgs.length>1 ? '<span class="imgCount">'+imgs.length+' 图</span>' : '') +
       '<button class="trashCopy" title="复制提示词" onclick="event.stopPropagation();copyText(\'' + esc2(r.prompt_text || '') + '\')">📋</button>' +
       '<div class="trashActs">' +
@@ -1407,9 +1418,9 @@ function restoreTrash(id){
     method: 'PATCH', token: getToken(), body: { tags: realTagsById(id) }, raw: true
   }).then(function(r){
     if(r && !r.ok) throw new Error('恢复失败');
-    // 本地更新记录、就地重绘回收站，不整页刷新
+    // 本地更新记录、只移除对应卡片（不整批重建，保持流畅）
     for(var i=0;i<records.length;i++) if(records[i].id === id) records[i].tags = realTags(records[i]);
-    toast('已恢复'); renderTrash();
+    toast('已恢复'); removeTrashCard(id);
   })['catch'](function(e){ toast('失败：' + (e&&e.message?e.message:e)); });
 }
 function realTagsById(id){
@@ -1426,10 +1437,10 @@ function purgeTrash(id){
     .then(function(){ return apiFetch('/rest/v1/prompts?id=eq.' + encodeURIComponent(id), { method: 'DELETE', token: getToken(), raw: true }); })
     .then(function(r){
       if(r && !r.ok) throw new Error('删除失败');
-      // 本地移除、就地重绘回收站，不整页刷新
+      // 本地移除、只移除对应卡片（不整批重建，保持流畅）
       records = records.filter(function(x){ return x.id !== id; });
       if(loadedCount > records.length) loadedCount = records.length;
-      toast('已永久删除'); renderTrash();
+      toast('已永久删除'); removeTrashCard(id);
     })['catch'](function(e){ toast('失败：' + (e&&e.message?e.message:e)); });
   }, '永久删除');
 }
